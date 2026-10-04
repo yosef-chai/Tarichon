@@ -22,7 +22,7 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.9.0"
 #endif
-#define MyAppPublisher "ישראל אמיתי"
+#define MyAppPublisher "ישראל אמיתי ו-א.מ."
 #define MyAppURL "https://github.com/Ani-yakhol/Tarichon"
 #define MyAppExeName "HebrewTaskbarWidget.exe"
 #define MySettingsExeName "HebrewTaskbarWidgetSettings.exe"
