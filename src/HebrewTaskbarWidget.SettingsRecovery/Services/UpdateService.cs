@@ -52,8 +52,8 @@ namespace HebrewTaskbarWidget.Services
     /// </summary>
     public static class UpdateService
     {
-        // *** יש לעדכן לפני הפצה: בעלים/שם המאגר ב-GitHub. ראו מדריך העדכונים. ***
-        private const string GitHubOwner = "Ani-yakhol";
+        // המאגר שממנו יוצאות הגרסאות: בדיקת העדכונים, קישור "קוד המקור" ודף האודות
+        internal const string GitHubOwner = "yosef-chai";
         private const string GitHubRepo = "Tarichon";
 
         /// <summary>
@@ -67,6 +67,20 @@ namespace HebrewTaskbarWidget.Services
         /// </summary>
         private static readonly Regex InstallerAssetPattern =
             new(@"^Tarichon-Setup-.*\.exe$", RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// בוחר את המתקין להורדה. ב-Release יש גם מתקין "Full" שכולל את ‎.NET (כ-64MB);
+        /// מי שמעדכן כבר מריץ את התוכנה ולכן ‎.NET מותקן אצלו - מעדיפים את המתקין הרגיל.
+        /// </summary>
+        internal static string? SelectInstallerAssetUrl(IEnumerable<(string Name, string? Url)> assets)
+        {
+            List<(string Name, string? Url)> installers = assets
+                .Where(a => InstallerAssetPattern.IsMatch(a.Name) && !string.IsNullOrEmpty(a.Url))
+                .ToList();
+
+            return installers.FirstOrDefault(a => !a.Name.Contains("-Full", StringComparison.OrdinalIgnoreCase)).Url
+                   ?? installers.FirstOrDefault().Url;
+        }
 
         /// <summary>כתובת דף המאגר ב-GitHub - נגזרת מאותם קבועים בדיוק ששולטים גם בבדיקת העדכונים, כדי שיהיה מקור אמת יחיד.</summary>
         public const string RepositoryUrl = $"https://github.com/{GitHubOwner}/{GitHubRepo}";
@@ -154,19 +168,20 @@ namespace HebrewTaskbarWidget.Services
                     return null;
                 }
 
-                string? downloadUrl = null;
+                var releaseAssets = new List<(string Name, string? Url)>();
                 if (root.TryGetProperty("assets", out JsonElement assets))
                 {
                     foreach (JsonElement asset in assets.EnumerateArray())
                     {
                         string? name = asset.TryGetProperty("name", out JsonElement nameEl) ? nameEl.GetString() : null;
-                        if (name is not null && InstallerAssetPattern.IsMatch(name))
+                        if (name is not null)
                         {
-                            downloadUrl = asset.TryGetProperty("browser_download_url", out JsonElement urlEl) ? urlEl.GetString() : null;
-                            break;
+                            releaseAssets.Add((name, asset.TryGetProperty("browser_download_url", out JsonElement urlEl) ? urlEl.GetString() : null));
                         }
                     }
                 }
+
+                string? downloadUrl = SelectInstallerAssetUrl(releaseAssets);
 
                 if (string.IsNullOrEmpty(downloadUrl))
                 {
