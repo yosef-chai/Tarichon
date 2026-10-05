@@ -502,8 +502,15 @@ namespace HebrewTaskbarWidget
 
             if (WidgetBackground.ContextMenu is { } menu)
             {
+                ApplyContextMenuTheme(menu);
                 menu.IsOpen = true;
             }
+        }
+
+        /// <summary>צובע את תפריט ההקשר בפלטה המשותפת, לפי העדפת בהיר/כהה של לוח הזמנים.</summary>
+        private static void ApplyContextMenuTheme(ContextMenu menu)
+        {
+            AppTheme.Apply(menu.Resources, SettingsService.Current.ZmanimPopupDarkMode);
         }
 
         /// <summary>

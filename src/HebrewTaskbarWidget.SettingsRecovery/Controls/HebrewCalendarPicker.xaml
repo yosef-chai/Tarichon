@@ -3,24 +3,61 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FlowDirection="RightToLeft">
 
+    <!-- הצבעים והסגנונות המשותפים (SubtleIconButtonStyle, SegmentedItemStyle וכו') מגיעים מהחלון
+         המארח, שממזג את Themes/SettingsTheme.xaml - לכן כולם DynamicResource. -->
     <UserControl.Resources>
-        <Style x:Key="MonthNavButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="24" />
-            <Setter Property="Height" Value="24" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource CalPrimaryTextBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FontSize" Value="13" />
+        <!-- תא יום: Content הוא CalendarDayCell. Tag קובע מצב: Selected / Today. -->
+        <Style x:Key="DayCellButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Margin" Value="1" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="12">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <Border x:Name="Bd" CornerRadius="6" BorderThickness="1"
+                                Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,1,0,0">
+                                <TextBlock x:Name="PrimaryText" HorizontalAlignment="Center" FontSize="13" LineHeight="15"
+                                           LineStackingStrategy="BlockLineHeight"
+                                           Text="{Binding Content.PrimaryLabel, RelativeSource={RelativeSource TemplatedParent}}"
+                                           Foreground="{TemplateBinding Foreground}" />
+                                <TextBlock x:Name="SecondaryText" HorizontalAlignment="Center" FontSize="9.5" Opacity="0.72"
+                                           Text="{Binding Content.SecondaryLabel, RelativeSource={RelativeSource TemplatedParent}}"
+                                           Foreground="{TemplateBinding Foreground}" />
+                                <!-- נקודה קטנה ליום עם מועד; שם המועד מוצג ב-ToolTip -->
+                                <Ellipse x:Name="HolidayDot" Width="4" Height="4" Margin="0,1,0,0" HorizontalAlignment="Center"
+                                         Fill="{DynamicResource AccentForegroundBrush}" />
+                            </StackPanel>
                         </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="ToolTip" Value="{x:Null}">
+                                <Setter TargetName="HolidayDot" Property="Visibility" Value="Hidden" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding Content.IsInDisplayedMonth, RelativeSource={RelativeSource Self}}" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.42" />
+                            </DataTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CalHoverBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Today">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentForegroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+                                <Setter TargetName="PrimaryText" Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Selected">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentFillBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentFillBrush}" />
+                                <Setter TargetName="Bd" Property="Opacity" Value="1" />
+                                <Setter TargetName="HolidayDot" Property="Fill" Value="{DynamicResource OnAccentForegroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource OnAccentForegroundBrush}" />
+                                <Setter TargetName="PrimaryText" Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentForegroundBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -28,75 +65,59 @@
             </Setter>
         </Style>
 
-        <Style x:Key="DayCellButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource CalPrimaryTextBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Height" Value="26" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="13">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CalHoverBrush}" />
-                            </Trigger>
-                            <Trigger Property="Tag" Value="Selected">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CalAccentBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource CalAccentTextBrush}" />
-                            </Trigger>
-                            <Trigger Property="Tag" Value="Today">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource CalAccentBrush}" />
-                                <Setter TargetName="Bd" Property="BorderThickness" Value="1" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+        <Style x:Key="WeekdayHeaderText" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryForegroundBrush}" />
         </Style>
     </UserControl.Resources>
 
     <StackPanel>
-        <!-- כותרת: ניווט חודש עברי קודם/הבא + שם חודש ושנה -->
-        <Grid Margin="0,0,0,6">
+        <!-- בחירת לוח: עברי או לועזי. בשני המצבים כל תא מציג גם את היום בלוח השני. -->
+        <Border Style="{DynamicResource SegmentedHostStyle}" HorizontalAlignment="Center" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="HebrewModeRadio" Content="עברי" Style="{DynamicResource SegmentedItemStyle}"
+                             AutomationProperties.Name="לוח עברי" Checked="ModeRadio_Checked" />
+                <RadioButton x:Name="GregorianModeRadio" Content="לועזי" Style="{DynamicResource SegmentedItemStyle}"
+                             AutomationProperties.Name="לוח לועזי" Checked="ModeRadio_Checked" />
+            </StackPanel>
+        </Border>
+
+        <Grid Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- ימין: חודש קודם (אחורה) -->
-            <Button Grid.Column="0" x:Name="PrevMonthButton" Style="{StaticResource MonthNavButtonStyle}"
-                    Content="&#8249;" Click="PrevMonthButton_Click" ToolTip="חודש קודם" />
+            <!-- בפריסה עברית "אחורה" בצד ימין, ולכן החץ פונה ימינה -->
+            <Button Grid.Column="0" x:Name="PrevMonthButton" Style="{DynamicResource SubtleIconButtonStyle}"
+                    Content="&#xE76C;" FontSize="12" Click="PrevMonthButton_Click"
+                    ToolTip="חודש קודם" AutomationProperties.Name="חודש קודם" />
 
-            <TextBlock Grid.Column="1" x:Name="MonthYearText" HorizontalAlignment="Center" VerticalAlignment="Center"
-                       Foreground="{DynamicResource CalPrimaryTextBrush}" FontSize="12.5" FontWeight="SemiBold" />
+            <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock x:Name="MonthYearText" HorizontalAlignment="Center" FontSize="13.5" FontWeight="SemiBold"
+                           Foreground="{DynamicResource PrimaryForegroundBrush}" />
+                <TextBlock x:Name="SubtitleText" HorizontalAlignment="Center" FontSize="11" Margin="0,1,0,0"
+                           Foreground="{DynamicResource SecondaryForegroundBrush}" />
+            </StackPanel>
 
-            <!-- שמאל: חודש הבא (קדימה) -->
-            <Button Grid.Column="2" x:Name="NextMonthButton" Style="{StaticResource MonthNavButtonStyle}"
-                    Content="&#8250;" Click="NextMonthButton_Click" ToolTip="חודש הבא" />
+            <Button Grid.Column="2" x:Name="NextMonthButton" Style="{DynamicResource SubtleIconButtonStyle}"
+                    Content="&#xE76B;" FontSize="12" Click="NextMonthButton_Click"
+                    ToolTip="חודש הבא" AutomationProperties.Name="חודש הבא" />
         </Grid>
 
-        <!-- כותרות ימי השבוע: ראשון בצד ימין (פריסה עברית) -->
-        <Grid Margin="0,0,0,2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="א" HorizontalAlignment="Center" FontSize="10.5" Foreground="{DynamicResource CalSecondaryTextBrush}" />
-            <TextBlock Grid.Column="1" Text="ב" HorizontalAlignment="Center" FontSize="10.5" Foreground="{DynamicResource CalSecondaryTextBrush}" />
-            <TextBlock Grid.Column="2" Text="ג" HorizontalAlignment="Center" FontSize="10.5" Foreground="{DynamicResource CalSecondaryTextBrush}" />
-            <TextBlock Grid.Column="3" Text="ד" HorizontalAlignment="Center" FontSize="10.5" Foreground="{DynamicResource CalSecondaryTextBrush}" />
-            <TextBlock Grid.Column="4" Text="ה" HorizontalAlignment="Center" FontSize="10.5" Foreground="{DynamicResource CalSecondaryTextBrush}" />
-            <TextBlock Grid.Column="5" Text="ו" HorizontalAlignment="Center" FontSize="10.5" Foreground="{DynamicResource CalSecondaryTextBrush}" />
-            <TextBlock Grid.Column="6" Text="ש" HorizontalAlignment="Center" FontSize="10.5" Foreground="{DynamicResource CalSecondaryTextBrush}" />
-        </Grid>
+        <!-- כותרות ימי השבוע: ראשון בעמודה 0, שמוצגת מימין -->
+        <UniformGrid Columns="7" Margin="0,0,0,4">
+            <TextBlock Text="א" Style="{StaticResource WeekdayHeaderText}" />
+            <TextBlock Text="ב" Style="{StaticResource WeekdayHeaderText}" />
+            <TextBlock Text="ג" Style="{StaticResource WeekdayHeaderText}" />
+            <TextBlock Text="ד" Style="{StaticResource WeekdayHeaderText}" />
+            <TextBlock Text="ה" Style="{StaticResource WeekdayHeaderText}" />
+            <TextBlock Text="ו" Style="{StaticResource WeekdayHeaderText}" />
+            <TextBlock Text="ש" Style="{StaticResource WeekdayHeaderText}" />
+        </UniformGrid>
 
-        <!-- רשת הימים - נבנית דינמית בקוד (עד 6 שורות x 7 עמודות) -->
         <Grid x:Name="DaysGrid">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />

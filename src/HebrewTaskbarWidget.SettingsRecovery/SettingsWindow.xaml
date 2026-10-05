@@ -141,7 +141,7 @@
                                 </controls:SettingsCard.Details>
                             </controls:SettingsCard>
                             <controls:SettingsCard Glyph="&#xE72E;" Header="נעילת מיקום" Keywords="גרירה Ctrl"
-                                                   Description="אפשר להזיז את הוידג'ט ב-Ctrl + גרירה. הנעילה מונעת הזזה בטעות.">
+                                                   Description="אפשר להזיז את הוידג'ט בגרירה עם Ctrl לחוץ. הנעילה מונעת הזזה בטעות.">
                                 <CheckBox x:Name="LockWidgetPositionCheckBox" Style="{StaticResource ToggleSwitchStyle}" />
                             </controls:SettingsCard>
                             <controls:SettingsCard Glyph="&#xE8A7;" Header="מיקום לוח הזמנים" Description="היכן נפתח לוח זמני היום בלחיצה על הוידג'ט">
@@ -716,7 +716,7 @@
                     <ScrollViewer x:Name="DesktopTabScrollViewer" VerticalScrollBarVisibility="Auto">
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" MaxWidth="960" /></Grid.ColumnDefinitions><StackPanel Margin="28,0,32,28">
                             <controls:SettingsCard Glyph="&#xE7F4;" Header="תצוגה על שולחן העבודה"
-                                                   Description="Ctrl + גרירה כדי להזיז. לחיצה ימנית פותחת תפריט (הגדרות, כיבוי, אודות).">
+                                                   Description="מזיזים בגרירה עם Ctrl לחוץ. לחיצה ימנית פותחת תפריט (הגדרות, כיבוי, אודות).">
                                 <CheckBox x:Name="OverlayEnabledCheckBox" Style="{StaticResource ToggleSwitchStyle}" Checked="OverlayEnabledCheckBox_CheckedChanged" Unchecked="OverlayEnabledCheckBox_CheckedChanged" />
                             </controls:SettingsCard>
 
@@ -745,7 +745,7 @@
                                         </StackPanel>
                                     </controls:SettingsCard.Details>
                                 </controls:SettingsCard>
-                                <controls:SettingsCard Glyph="&#xE72E;" Header="נעילת מיקום" Description="מונעת הזזה בטעות ב-Ctrl + גרירה">
+                                <controls:SettingsCard Glyph="&#xE72E;" Header="נעילת מיקום" Description="מונעת הזזה בטעות בגרירה עם Ctrl לחוץ">
                                     <CheckBox x:Name="LockOverlayPositionCheckBox" Style="{StaticResource ToggleSwitchStyle}" />
                                 </controls:SettingsCard>
                                 <controls:SettingsCard Glyph="&#xE718;" Header="תמיד למעלה" Description="מעל כל שאר החלונות">

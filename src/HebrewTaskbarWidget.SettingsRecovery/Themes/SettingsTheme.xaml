@@ -2,8 +2,8 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:controls="clr-namespace:HebrewTaskbarWidget.Controls">
 
-    <!-- ערכת העיצוב של חלון ההגדרות. הצבעים כאן הם של המצב הבהיר; ApplyPanelTheme
-         ב-SettingsWindow.xaml.cs מחליף אותם בזמן ריצה, ולכן כל שימוש בהם הוא DynamicResource. -->
+    <!-- ערכת העיצוב המשותפת לכל חלונות התוכנה. הצבעים כאן הם של המצב הבהיר;
+         Services/AppTheme.cs מחליף אותם בזמן ריצה, ולכן כל שימוש בהם הוא DynamicResource. -->
     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F3F3F3" />
     <SolidColorBrush x:Key="PrimaryForegroundBrush" Color="#1B1C1F" />
     <SolidColorBrush x:Key="SecondaryForegroundBrush" Color="#5B5D63" />
@@ -29,8 +29,13 @@
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="#8A8B90" />
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="#5B5D63" />
     <SolidColorBrush x:Key="ScrollTrackBrush" Color="#00000000" />
+    <SolidColorBrush x:Key="OnAccentForegroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="FlyoutBackgroundBrush" Color="#F9F9FA" />
+    <SolidColorBrush x:Key="FlyoutBorderBrush" Color="#D5D5D9" />
+    <SolidColorBrush x:Key="DangerForegroundBrush" Color="#B3261E" />
 
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
 
     <!-- טקסט -->
     <Style TargetType="TextBlock">
@@ -807,5 +812,250 @@
                 <Setter Property="TextDecorations" Value="Underline" />
             </Trigger>
         </Style.Triggers>
+    </Style>
+
+    <!-- משטח צף (לוח הזמנים, הודעות, דיאלוגים): פינות 8 כמו flyout ב-Windows 11, וצל רך.
+         החלון המארח צריך שוליים שקופים סביבו כדי שהצל לא ייחתך. -->
+    <Style x:Key="FlyoutSurfaceStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource FlyoutBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlyoutBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="3" Direction="270" Opacity="0.28" Color="Black" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- כרטיס פנימי בתוך משטח צף -->
+    <Style x:Key="InsetCardStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+    </Style>
+
+    <!-- כפתור סמליל שקוף (ניווט, הגדרות, ערכת נושא): רקע עדין רק במעבר עכבר. -->
+    <Style x:Key="SubtleIconButtonStyle" TargetType="ButtonBase">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ButtonBase">
+                    <Border x:Name="Bd" CornerRadius="6" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+                        </Trigger>
+                        <Trigger Property="ToggleButton.IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentForegroundBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- כפתור טקסט שקוף בצבע ההדגשה ("חזרה להיום") -->
+    <Style x:Key="SubtleTextButtonStyle" TargetType="Button">
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="6" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NavSelectedBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentForegroundBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- בורר מקטעים (למשל עברי / לועזי): RadioButton בצורת לשונית. -->
+    <Style x:Key="SegmentedItemStyle" TargetType="RadioButton">
+        <Setter Property="Height" Value="26" />
+        <Setter Property="MinWidth" Value="64" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Foreground" Value="{DynamicResource SecondaryForegroundBrush}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Bd" CornerRadius="5" Background="Transparent" BorderThickness="1" BorderBrush="Transparent"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentForegroundBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SegmentedHostStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+        <Setter Property="CornerRadius" Value="7" />
+        <Setter Property="Padding" Value="2" />
+    </Style>
+
+    <!-- תפריט הקשר: משטח צף מעוגל, פריטים עם סמליל בצד ההתחלה והדגשה במעבר עכבר.
+         HasDropShadow כבוי כי הצל מצויר בתבנית עצמה (השוליים סביב הגבול שומרים לו מקום). -->
+    <Style x:Key="AppContextMenuStyle" TargetType="ContextMenu">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}" />
+        <Setter Property="Grid.IsSharedSizeScope" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Margin="12" Padding="4" MinWidth="210" Style="{StaticResource FlyoutSurfaceStyle}"
+                            TextOptions.TextFormattingMode="Display">
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Resources>
+            <Style TargetType="MenuItem">
+                <Setter Property="OverridesDefaultStyle" Value="True" />
+                <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="Bd" Height="34" Margin="0,1" Padding="10,0" CornerRadius="4"
+                                    Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="MenuIcon" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="Glyph" Grid.Column="0" Width="18" Margin="0,0,12,0"
+                                               Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                               FontFamily="{StaticResource IconFont}" FontSize="15" TextAlignment="Center"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                                    <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
+                                                      VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}" />
+                                    <TextBlock Grid.Column="2" Margin="24,0,0,0" VerticalAlignment="Center" FontSize="11.5"
+                                               Text="{TemplateBinding InputGestureText}" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                                </Grid>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SubtleFillBrush}" />
+                                    <Setter TargetName="Glyph" Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentForegroundBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.45" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
+                <Setter Property="OverridesDefaultStyle" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Separator">
+                            <Border Height="1" Margin="-4,4" Background="{DynamicResource CardBorderBrush}" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </Style.Resources>
+    </Style>
+
+    <!-- חלונית עזרה (ToolTip) בעיצוב המשותף -->
+    <Style TargetType="ToolTip">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Margin="8" Padding="9,5" MaxWidth="320" Style="{StaticResource FlyoutSurfaceStyle}">
+                        <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}">
+                            <ContentPresenter.Resources>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="TextWrapping" Value="Wrap" />
+                                </Style>
+                            </ContentPresenter.Resources>
+                        </ContentPresenter>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 </ResourceDictionary>

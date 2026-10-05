@@ -23,23 +23,40 @@
             AllowsTransparency+PerMonitorV2) - הוא נפתח יזומה מקוד ה-C#,
             כתגובה להודעת WM_RBUTTONDOWN גולמית (ראו MainWindow.xaml.cs).
         -->
-        <ContextMenu x:Key="WidgetContextMenu" FlowDirection="RightToLeft" Opened="WidgetContextMenu_Opened" Closed="WidgetContextMenu_Closed">
+        <!-- עיצוב התפריט מגיע מ-Themes/SettingsTheme.xaml (AppContextMenuStyle), שממוזג רק לתוך
+             התפריט ולא לחלון, כדי לא לשנות את הטקסט של הוידג'ט עצמו. הצבעים מוחלים בפתיחה
+             (ApplyContextMenuTheme) לפי אותה העדפת בהיר/כהה של לוח הזמנים. Tag = סמליל Segoe Fluent. -->
+        <ContextMenu x:Key="WidgetContextMenu" FlowDirection="RightToLeft"
+                     Style="{DynamicResource AppContextMenuStyle}"
+                     Opened="WidgetContextMenu_Opened" Closed="WidgetContextMenu_Closed">
+            <ContextMenu.Resources>
+                <ResourceDictionary>
+                    <ResourceDictionary.MergedDictionaries>
+                        <ResourceDictionary Source="/HebrewTaskbarWidget;component/Themes/SettingsTheme.xaml" />
+                    </ResourceDictionary.MergedDictionaries>
+                </ResourceDictionary>
+            </ContextMenu.Resources>
             <MenuItem x:Name="ZmanimMenuItem"
-                      Header="זמני היום..."
+                      Header="זמני היום"
+                      Tag="&#xE823;"
                       Click="ZmanimMenuItem_Click" />
             <MenuItem x:Name="SettingsMenuItem"
-                      Header="הגדרות..."
+                      Header="הגדרות"
+                      Tag="&#xE713;"
                       Click="SettingsMenuItem_Click" />
             <MenuItem x:Name="NotificationsMenuItem"
-                      Header="התראות..."
+                      Header="התראות"
+                      Tag="&#xEA8F;"
                       Click="NotificationsMenuItem_Click" />
             <Separator />
             <MenuItem x:Name="AboutMenuItem"
                       Header="אודות"
+                      Tag="&#xE946;"
                       Click="AboutMenuItem_Click" />
             <Separator />
             <MenuItem x:Name="ExitMenuItem"
                       Header="יציאה"
+                      Tag="&#xE7E8;"
                       Click="ExitMenuItem_Click" />
         </ContextMenu>
     </Window.Resources>

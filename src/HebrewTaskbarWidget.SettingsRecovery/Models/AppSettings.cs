@@ -531,6 +531,9 @@ namespace HebrewTaskbarWidget.Models
         /// <summary>true (ברירת מחדל) = רקע כהה; false = רקע בהיר. מוחלף ע"י הכפתור שמש/ירח שליד סמל ההגדרות בלוח הזמנים.</summary>
         public bool ZmanimPopupDarkMode { get; set; } = true;
 
+        /// <summary>true = בורר התאריך בלוח הזמנים נפתח בלוח הלועזי; false (ברירת מחדל) = בלוח העברי.</summary>
+        public bool ZmanimPopupCalendarGregorian { get; set; } = false;
+
         // --- תצוגה חופשית מעל שולחן העבודה ---
         public bool OverlayEnabled { get; set; } = false;
         public bool OverlayShowTime { get; set; } = true;

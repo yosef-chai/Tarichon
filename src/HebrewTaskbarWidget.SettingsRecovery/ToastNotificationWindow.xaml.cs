@@ -76,11 +76,12 @@ namespace HebrewTaskbarWidget
                 TitleText.Visibility = Visibility.Visible;
             }
 
-            var zmanNameBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(darkBackground ? "#9ECBFF" : "#1A5FB4"));
+            var zmanNameRun = new Run(zmanName) { FontWeight = FontWeights.SemiBold };
+            zmanNameRun.SetResourceReference(TextElement.ForegroundProperty, "AccentForegroundBrush");
 
             MessageText.Inlines.Clear();
             MessageText.Inlines.Add(new Run("זמן "));
-            MessageText.Inlines.Add(new Run(zmanName) { Foreground = zmanNameBrush, FontWeight = FontWeights.SemiBold });
+            MessageText.Inlines.Add(zmanNameRun);
             MessageText.Inlines.Add(new Run($" {BuildDurationPhrase(minutesBefore)}"));
             MessageText.Inlines.Add(new LineBreak());
             MessageText.Inlines.Add(new Run($"בשעה {timeText}"));
@@ -104,24 +105,7 @@ namespace HebrewTaskbarWidget
         /// <summary>מחיל את ערכת הרקע (כהה - ברירת מחדל, או בהיר) שנבחרה בהגדרות על חלונית ההתראה.</summary>
         private void ApplyBackgroundTheme(bool dark)
         {
-            if (dark)
-            {
-                ToastBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0202225"));
-                ToastBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33FFFFFF"));
-                TitleText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9A9A9A"));
-                MessageText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E4E4E4"));
-                CloseButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9A9A9A"));
-                SnoozeButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9A9A9A"));
-            }
-            else
-            {
-                ToastBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F5FAFAFA"));
-                ToastBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#22000000"));
-                TitleText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#8A8A8A"));
-                MessageText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#222222"));
-                CloseButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#8A8A8A"));
-                SnoozeButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#8A8A8A"));
-            }
+            AppTheme.Apply(Resources, dark);
         }
 
         /// <summary>

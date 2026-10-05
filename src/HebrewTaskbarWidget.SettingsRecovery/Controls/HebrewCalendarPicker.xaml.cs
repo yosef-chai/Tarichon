@@ -1,129 +1,162 @@
 using System;
-using System.Globalization;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using HebrewTaskbarWidget.Models;
 using HebrewTaskbarWidget.Services;
 
 namespace HebrewTaskbarWidget.Controls
 {
     /// <summary>
-    /// בורר תאריך בפריסה עברית מלאה: חודשים עבריים (עם ניווט חודש עברי קודם/
-    /// הבא), ותאריכים עבריים (בגימטריה) בתאי הימים - בניגוד לפקד ה-Calendar
-    /// המובנה של WPF, שאינו תומך רשמית בלוח העברי (רק גרגוריאני/הג'רי/יפני
-    /// וכו') ולכן לא יכול להציג חודשים/ימים עבריים בעצמו.
-    ///
-    /// עובד תמיד מול תאריכים גרגוריאנים בפועל (SelectedDate, שהוא מה שכל שאר
-    /// האפליקציה משתמשת בו) - ה"עברי" הוא רק שכבת התצוגה/הניווט.
+    /// בורר תאריך בפריסה עברית, עם מעבר בין לוח עברי ללוח לועזי. בשני המצבים כל תא מציג
+    /// גם את היום המקביל בלוח השני, וימים עם מועד מסומנים בנקודה (שם המועד ב-ToolTip).
+    /// הפקד עובד תמיד מול DateTime לועזי; הרשת עצמה נבנית ב-CalendarMonthBuilder.
     /// </summary>
     public partial class HebrewCalendarPicker : UserControl
     {
-        private static readonly System.Globalization.HebrewCalendar Calendar = HebrewDateFormatter.Calendar;
-
-        private int _displayedHebrewYear;
-        private int _displayedHebrewMonth;
+        private int _displayedYear;
+        private int _displayedMonth;
+        private bool _suppressModeEvent;
 
         public DateTime? SelectedDate { get; private set; }
 
-        /// <summary>מופעל כאשר המשתמש בוחר יום ברשת (לא כאשר רק מנווטים בין חודשים).</summary>
+        public CalendarSystem Mode { get; private set; } = CalendarSystem.Hebrew;
+
+        /// <summary>מופעל כשבוחרים יום ברשת (לא בניווט בין חודשים).</summary>
         public event EventHandler<DateTime>? DateSelected;
+
+        /// <summary>מופעל כשהמשתמש מחליף בין לוח עברי ללועזי.</summary>
+        public event EventHandler<CalendarSystem>? ModeChanged;
 
         public HebrewCalendarPicker()
         {
             InitializeComponent();
+            SetModeRadio(Mode);
         }
 
-        /// <summary>מציג את החודש העברי שמכיל את התאריך הגרגוריאני הנתון, ומסמן אותו כנבחר.</summary>
+        /// <summary>מציג את החודש שמכיל את התאריך ומסמן אותו כנבחר.</summary>
         public void ShowMonthContaining(DateTime gregorianDate)
         {
             SelectedDate = gregorianDate.Date;
-            _displayedHebrewYear = Calendar.GetYear(gregorianDate);
-            _displayedHebrewMonth = Calendar.GetMonth(gregorianDate);
+            (_displayedYear, _displayedMonth) = CalendarMonthBuilder.MonthContaining(Mode, gregorianDate);
             Rebuild();
         }
 
-        private void PrevMonthButton_Click(object sender, RoutedEventArgs e)
+        /// <summary>מחליף לוח בלי להפעיל ModeChanged (לטעינת העדפה שמורה).</summary>
+        public void SetMode(CalendarSystem mode)
         {
-            StepMonth(-1);
+            Mode = mode;
+            SetModeRadio(mode);
+            (_displayedYear, _displayedMonth) = CalendarMonthBuilder.MonthContaining(mode, SelectedDate ?? AppTimeService.Today());
+            Rebuild();
         }
 
-        private void NextMonthButton_Click(object sender, RoutedEventArgs e)
+        private void SetModeRadio(CalendarSystem mode)
         {
-            StepMonth(1);
+            _suppressModeEvent = true;
+            HebrewModeRadio.IsChecked = mode == CalendarSystem.Hebrew;
+            GregorianModeRadio.IsChecked = mode == CalendarSystem.Gregorian;
+            _suppressModeEvent = false;
         }
+
+        private void ModeRadio_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_suppressModeEvent)
+            {
+                return;
+            }
+
+            CalendarSystem mode = GregorianModeRadio.IsChecked == true ? CalendarSystem.Gregorian : CalendarSystem.Hebrew;
+            if (mode == Mode)
+            {
+                return;
+            }
+
+            // שומרים על החודש שמוצג כרגע: עוברים לחודש בלוח השני שמכיל את אמצע החודש הנוכחי.
+            DateTime anchor = SelectedDate ?? AppTimeService.Today();
+            if (_displayedYear != 0)
+            {
+                (DateTime first, DateTime last) = CalendarMonthBuilder.GetMonthRange(Mode, _displayedYear, _displayedMonth);
+                if (anchor < first || anchor > last)
+                {
+                    anchor = first.AddDays((last - first).Days / 2);
+                }
+            }
+
+            Mode = mode;
+            (_displayedYear, _displayedMonth) = CalendarMonthBuilder.MonthContaining(mode, anchor);
+            Rebuild();
+            ModeChanged?.Invoke(this, mode);
+        }
+
+        private void PrevMonthButton_Click(object sender, RoutedEventArgs e) => StepMonth(-1);
+
+        private void NextMonthButton_Click(object sender, RoutedEventArgs e) => StepMonth(1);
 
         private void StepMonth(int delta)
         {
-            int monthsInYear = Calendar.GetMonthsInYear(_displayedHebrewYear);
-            int newMonth = _displayedHebrewMonth + delta;
-
-            if (newMonth < 1)
-            {
-                _displayedHebrewYear -= 1;
-                _displayedHebrewMonth = Calendar.GetMonthsInYear(_displayedHebrewYear);
-            }
-            else if (newMonth > monthsInYear)
-            {
-                _displayedHebrewYear += 1;
-                _displayedHebrewMonth = 1;
-            }
-            else
-            {
-                _displayedHebrewMonth = newMonth;
-            }
-
+            (_displayedYear, _displayedMonth) = CalendarMonthBuilder.Step(Mode, _displayedYear, _displayedMonth, delta);
             Rebuild();
         }
 
         private void Rebuild()
         {
-            bool isLeap = Calendar.IsLeapYear(_displayedHebrewYear);
-            string monthName = HebrewDateFormatter.GetMonthName(_displayedHebrewMonth, isLeap);
-            string yearGematria = HebrewGematria.FormatYear(_displayedHebrewYear);
-            MonthYearText.Text = $"{monthName} {yearGematria}";
+            if (_displayedYear == 0)
+            {
+                (_displayedYear, _displayedMonth) = CalendarMonthBuilder.MonthContaining(Mode, AppTimeService.Today());
+            }
 
-            int daysInMonth = Calendar.GetDaysInMonth(_displayedHebrewYear, _displayedHebrewMonth);
-            DateTime firstOfMonthGregorian = Calendar.ToDateTime(_displayedHebrewYear, _displayedHebrewMonth, 1, 0, 0, 0, 0);
-            int startColumn = (int)firstOfMonthGregorian.DayOfWeek; // 0=ראשון ... 6=שבת, תואם לעמודות הרשת (ראשון בעמודה 0)
+            CalendarMonthView view = CalendarMonthBuilder.Build(Mode, _displayedYear, _displayedMonth);
+            MonthYearText.Text = view.Title;
+            SubtitleText.Text = view.Subtitle;
+
+            PrevMonthButton.IsEnabled = CalendarMonthBuilder.Step(Mode, _displayedYear, _displayedMonth, -1) != (_displayedYear, _displayedMonth);
+            NextMonthButton.IsEnabled = CalendarMonthBuilder.Step(Mode, _displayedYear, _displayedMonth, 1) != (_displayedYear, _displayedMonth);
 
             DaysGrid.Children.Clear();
             DaysGrid.RowDefinitions.Clear();
-
-            int neededRows = (int)Math.Ceiling((startColumn + daysInMonth) / 7.0);
-            for (int r = 0; r < neededRows; r++)
+            for (int r = 0; r < view.RowCount; r++)
             {
                 DaysGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             }
 
             DateTime today = AppTimeService.Today();
+            var style = (Style)FindResource("DayCellButtonStyle");
 
-            for (int day = 1; day <= daysInMonth; day++)
+            foreach (CalendarDayCell cell in view.Cells)
             {
-                int cellIndex = startColumn + day - 1;
-                int row = cellIndex / 7;
-                int col = cellIndex % 7;
-
-                DateTime cellGregorianDate = Calendar.ToDateTime(_displayedHebrewYear, _displayedHebrewMonth, day, 0, 0, 0, 0);
+                string? holiday = HolidayCalendar.GetDisplayText(cell.Date, HolidayDisplayContext.Popup);
 
                 var button = new Button
                 {
-                    Content = HebrewGematria.FormatDay(day),
-                    Style = (Style)FindResource("DayCellButtonStyle"),
-                    Tag = SelectedDate.HasValue && cellGregorianDate.Date == SelectedDate.Value.Date
-                        ? "Selected"
-                        : (cellGregorianDate.Date == today ? "Today" : null),
+                    Content = cell,
+                    Style = style,
+                    Tag = SelectedDate == cell.Date ? "Selected" : (cell.Date == today ? "Today" : null),
+                    ToolTip = holiday,
                 };
+                AutomationProperties.SetName(button, BuildAccessibleName(cell, holiday));
 
-                button.Click += (_, _) =>
-                {
-                    SelectedDate = cellGregorianDate.Date;
-                    Rebuild();
-                    DateSelected?.Invoke(this, cellGregorianDate.Date);
-                };
+                DateTime date = cell.Date;
+                button.Click += (_, _) => SelectDate(date);
 
-                Grid.SetRow(button, row);
-                Grid.SetColumn(button, col);
+                Grid.SetRow(button, cell.Row);
+                Grid.SetColumn(button, cell.Column);
                 DaysGrid.Children.Add(button);
             }
+        }
+
+        private void SelectDate(DateTime date)
+        {
+            SelectedDate = date;
+            (_displayedYear, _displayedMonth) = CalendarMonthBuilder.MonthContaining(Mode, date);
+            Rebuild();
+            DateSelected?.Invoke(this, date);
+        }
+
+        private static string BuildAccessibleName(CalendarDayCell cell, string? holiday)
+        {
+            string name = $"{HebrewDateFormatter.Format(cell.Date).BottomLine}, {cell.Date:d/M/yyyy}";
+            return holiday is null ? name : $"{name}, {holiday}";
         }
     }
 }

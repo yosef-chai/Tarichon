@@ -47,6 +47,10 @@ namespace HebrewTaskbarWidget
         {
             InitializeComponent();
 
+            // צבעים כמו בחלון האב (גם אם מצב התצוגה שונה שם ועוד לא נשמר)
+            AppTheme.Apply(Resources, SettingsService.Current.SettingsPanelDarkMode);
+            Loaded += (_, _) => AppTheme.CopyPalette(Owner?.Resources, Resources);
+
             _baseZmanName = baseZmanName;
             _isCandleLighting = baseZmanName == ZmanimCalendar.NameCandleLighting;
             _isTzeit = baseZmanName == ZmanimCalendar.NameTzeitHakochavim;

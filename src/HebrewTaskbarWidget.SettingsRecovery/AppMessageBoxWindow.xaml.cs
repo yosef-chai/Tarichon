@@ -46,6 +46,10 @@ namespace HebrewTaskbarWidget
             TitleText.Text = caption;
             IconText.Text = IconGlyphFor(icon);
             IconText.Visibility = icon == MessageBoxImage.None ? Visibility.Collapsed : Visibility.Visible;
+            if (icon is MessageBoxImage.Error or MessageBoxImage.Warning)
+            {
+                IconText.SetResourceReference(TextBlock.ForegroundProperty, "DangerForegroundBrush");
+            }
 
             _isLargeScrollable = largeScrollable;
 
@@ -76,6 +80,7 @@ namespace HebrewTaskbarWidget
                 MessageScrollViewer.MaxHeight = LargeModeScrollMaxHeight;
 
                 MessageTextBlock.TextAlignment = TextAlignment.Right;
+                MessageTextBlock.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryForegroundBrush");
                 PopulateReleaseNotesInlines(MessageTextBlock, text);
             }
             else
@@ -98,8 +103,6 @@ namespace HebrewTaskbarWidget
         private static void PopulateReleaseNotesInlines(TextBlock target, string rawText)
         {
             target.Inlines.Clear();
-
-            var accentBrush = new SolidColorBrush(Color.FromRgb(0x1A, 0x5F, 0xB4));
 
             string[] lines = rawText.Replace("\r\n", "\n").Split('\n');
             bool isFirstLine = true;
@@ -135,12 +138,13 @@ namespace HebrewTaskbarWidget
                 if (hashCount > 0 && hashCount < trimmedStart.Length && trimmedStart[hashCount] == ' ')
                 {
                     string headingText = trimmedStart.Substring(hashCount + 1).Trim();
-                    target.Inlines.Add(new Run(headingText)
+                    var heading = new Run(headingText)
                     {
                         FontWeight = FontWeights.Bold,
                         FontSize = hashCount <= 2 ? 14.5 : 13,
-                        Foreground = accentBrush,
-                    });
+                    };
+                    heading.SetResourceReference(TextElement.ForegroundProperty, "AccentForegroundBrush");
+                    target.Inlines.Add(heading);
                 }
                 else if (trimmedStart.StartsWith("- ", StringComparison.Ordinal) ||
                          trimmedStart.StartsWith("* ", StringComparison.Ordinal))
@@ -182,12 +186,13 @@ namespace HebrewTaskbarWidget
 
         private static string IconGlyphFor(MessageBoxImage icon)
         {
+            // סמלילי Segoe Fluent Icons, כמו בשאר הממשק
             return icon switch
             {
-                MessageBoxImage.Error => "⛔",
-                MessageBoxImage.Question => "❓",
-                MessageBoxImage.Warning => "⚠",
-                MessageBoxImage.Information => "ℹ",
+                MessageBoxImage.Error => "",
+                MessageBoxImage.Question => "",
+                MessageBoxImage.Warning => "",
+                MessageBoxImage.Information => "",
                 _ => string.Empty,
             };
         }
@@ -235,7 +240,8 @@ namespace HebrewTaskbarWidget
             var button = new Button
             {
                 Content = content,
-                Style = (Style)FindResource(primary ? "PrimaryDialogButtonStyle" : "DialogButtonStyle"),
+                Style = (Style)FindResource(primary ? "PrimaryActionButtonStyle" : "ActionButtonStyle"),
+                Margin = new Thickness(5, 0, 5, 0),
                 IsDefault = primary,
             };
 
@@ -256,46 +262,10 @@ namespace HebrewTaskbarWidget
             }
         }
 
-        /// <summary>מחילה ערכת נושא בהירה (ברירת מחדל) או כהה, תואמת לצבעי פאנל ההגדרות עצמו.</summary>
+        /// <summary>מחילה את הפלטה המשותפת, לפי מצב התצוגה של פאנל ההגדרות.</summary>
         private void ApplyTheme(bool dark)
         {
-            if (dark)
-            {
-                RootBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1B1C1F"));
-                RootBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3A3B40"));
-                TitleText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0F0F0"));
-                MessageTextBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D6D6D8"));
-                ButtonAreaBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33FFFFFF"));
-
-                foreach (Button btn in FindButtons())
-                {
-                    if (btn.Style == (Style)FindResource("DialogButtonStyle"))
-                    {
-                        btn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A2B30"));
-                        btn.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#44454A"));
-                        btn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0F0F0"));
-                    }
-                }
-            }
-            else
-            {
-                RootBorder.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFFFF"));
-                RootBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D5D5D8"));
-                TitleText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1B1C1F"));
-                MessageTextBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3A3B40"));
-                ButtonAreaBorder.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E4E4E6"));
-            }
-        }
-
-        private System.Collections.Generic.IEnumerable<Button> FindButtons()
-        {
-            foreach (object child in ButtonsPanel.Children)
-            {
-                if (child is Button btn)
-                {
-                    yield return btn;
-                }
-            }
+            AppTheme.Apply(Resources, dark);
         }
     }
 }

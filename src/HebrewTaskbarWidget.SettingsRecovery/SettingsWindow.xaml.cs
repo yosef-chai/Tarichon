@@ -483,6 +483,7 @@ namespace HebrewTaskbarWidget
                 ZmanNotificationRules = source.ZmanNotificationRules.Select(CloneZmanRule).ToList(),
                 AdvancedNotificationRules = source.AdvancedNotificationRules.Select(CloneAdvancedRule).ToList(),
                 ZmanimPopupDarkMode = source.ZmanimPopupDarkMode,
+                ZmanimPopupCalendarGregorian = source.ZmanimPopupCalendarGregorian,
                 OverlayEnabled = source.OverlayEnabled,
                 OverlayShowTime = source.OverlayShowTime,
                 OverlayShowGregorianDate = source.OverlayShowGregorianDate,
@@ -1829,104 +1830,10 @@ namespace HebrewTaskbarWidget
             UpdateService.ApplyUpdateAndRestart(downloadedPath);
         }
 
-        /// <summary>
-        /// מחליף בפועל את כל צבעי פאנל ההגדרות (רקע, טקסט, תוויות לשוניות,
-        /// תיבות סימון וכו') - כל הרכיבים ב-XAML משתמשים ב-DynamicResource
-        /// לצבעים האלה בדיוק כדי שהחלפה כאן תיכנס לתוקף מיידית על כל הפאנל,
-        /// כולל בזמן אמת לפני לחיצה על "שמור".
-        ///
-        /// הצבעים במצב בהיר קבועים (מוגדרים כברירת מחדל ב-Window.Resources);
-        /// במצב כהה, רק צבע הרקע עצמו הוא לפי בחירת המשתמש - שאר הצבעים
-        /// (טקסט, גבולות וכו') עוברים לפלטת כהה קבועה שנבחרה כדי להבטיח
-        /// ניגודיות טובה מול כל צבע רקע כהה סביר שהמשתמש עשוי לבחור.
-        /// </summary>
+        /// <summary>מחליף את כל צבעי הפאנל בזמן אמת, לפי הפלטה המשותפת (AppTheme) - גם לפני "שמור".</summary>
         private void ApplyPanelTheme(bool dark, string darkBackgroundHex)
         {
-            if (!dark)
-            {
-                SetBrush("WindowBackgroundBrush", "#F3F3F3");
-                SetBrush("PrimaryForegroundBrush", "#1B1C1F");
-                SetBrush("SecondaryForegroundBrush", "#5B5D63");
-                SetBrush("AccentForegroundBrush", "#1A5FB4");
-                SetBrush("ControlBackgroundBrush", "#FFFFFF");
-                SetBrush("ControlBorderBrush", "#C6C6C9");
-                SetBrush("TabItemBackgroundBrush", "#E3E3E6");
-                SetBrush("TabItemForegroundBrush", "#3A3B40");
-                SetBrush("TabItemSelectedBackgroundBrush", "#FFFFFF");
-                SetBrush("TabItemSelectedForegroundBrush", "#1B1C1F");
-                SetBrush("CheckBoxBoxBrush", "#FFFFFF");
-                SetBrush("CheckBoxBorderBrush", "#8A8B90");
-                SetBrush("CheckMarkBrush", "#1A5FB4");
-                SetBrush("AccentFillBrush", "#1A5FB4");
-                SetBrush("CardBackgroundBrush", "#FBFBFC");
-                SetBrush("CardBorderBrush", "#E3E3E6");
-                SetBrush("CardHoverBrush", "#F6F6F8");
-                SetBrush("SubtleFillBrush", "#E9E9EC");
-                SetBrush("NavSelectedBrush", "#E2E2E7");
-                SetBrush("FooterBackgroundBrush", "#EBEBEE");
-                SetBrush("InfoBarBrush", "#E7F0FB");
-                SetBrush("ScrollThumbBrush", "#8A8B90");
-                SetBrush("ScrollThumbHoverBrush", "#5B5D63");
-                return;
-            }
-
-            string bg = string.IsNullOrWhiteSpace(darkBackgroundHex) ? "#1B1C1F" : darkBackgroundHex;
-            string tabBg = LightenOrDarken(bg, 0.12);
-            string controlBg = LightenOrDarken(bg, 0.08);
-
-            SetBrush("WindowBackgroundBrush", bg);
-            SetBrush("PrimaryForegroundBrush", "#F0F0F0");
-            SetBrush("SecondaryForegroundBrush", "#B0B0B0");
-            SetBrush("AccentForegroundBrush", "#9ECBFF");
-            SetBrush("ControlBackgroundBrush", controlBg);
-            SetBrush("ControlBorderBrush", "#4A4B50");
-            SetBrush("TabItemBackgroundBrush", tabBg);
-            // תוית לא-נבחרת: טקסט בהיר על רקע כהה. תווית נבחרת: כדי לשמור על
-            // ניגודיות מובטחת בלי תלות בכהות הצבע הספציפי שהמשתמש בחר, הרקע
-            // הנבחר תמיד בהיר-ניטרלי וטקסטו כהה - בדיוק כמו במצב הבהיר.
-            SetBrush("TabItemForegroundBrush", "#E6E6E6");
-            SetBrush("TabItemSelectedBackgroundBrush", "#F0F0F0");
-            SetBrush("TabItemSelectedForegroundBrush", "#1B1C1F");
-            SetBrush("CheckBoxBoxBrush", controlBg);
-            SetBrush("CheckBoxBorderBrush", "#8A8B90");
-            SetBrush("CheckMarkBrush", "#9ECBFF");
-            SetBrush("AccentFillBrush", "#2F6FC2");
-            SetBrush("CardBackgroundBrush", LightenOrDarken(bg, 0.05));
-            SetBrush("CardBorderBrush", LightenOrDarken(bg, 0.13));
-            SetBrush("CardHoverBrush", LightenOrDarken(bg, 0.08));
-            SetBrush("SubtleFillBrush", LightenOrDarken(bg, 0.10));
-            SetBrush("NavSelectedBrush", LightenOrDarken(bg, 0.14));
-            SetBrush("FooterBackgroundBrush", LightenOrDarken(bg, 0.03));
-            SetBrush("InfoBarBrush", "#1E3350");
-            SetBrush("ScrollThumbBrush", "#6A6B70");
-            SetBrush("ScrollThumbHoverBrush", "#9A9BA0");
-        }
-
-        private void SetBrush(string resourceKey, string hex)
-        {
-            var color = (Color)ColorConverter.ConvertFromString(hex);
-            Resources[resourceKey] = new SolidColorBrush(color);
-        }
-
-        /// <summary>מבהיר (amount חיובי) או מכהה (amount שלילי) צבע נתון, לשימוש בגוונים משניים (רקע לשוניות/פקדים) שנגזרים מצבע הרקע הכהה שהמשתמש בחר.</summary>
-        private static string LightenOrDarken(string hex, double amount)
-        {
-            try
-            {
-                Color c = (Color)ColorConverter.ConvertFromString(hex);
-                byte Adjust(byte channel)
-                {
-                    double value = channel + (255 - channel) * amount;
-                    return (byte)Math.Clamp(value, 0, 255);
-                }
-
-                Color adjusted = Color.FromRgb(Adjust(c.R), Adjust(c.G), Adjust(c.B));
-                return adjusted.ToString();
-            }
-            catch
-            {
-                return hex;
-            }
+            AppTheme.Apply(Resources, dark, darkBackgroundHex);
         }
 
         private void ShowGregorianClockCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
@@ -2908,6 +2815,7 @@ namespace HebrewTaskbarWidget
                 }).ToList(),
                 AdvancedNotificationRules = _workingAdvancedRules.Select(CloneAdvancedRule).ToList(),
                 ZmanimPopupDarkMode = _working.ZmanimPopupDarkMode,
+                ZmanimPopupCalendarGregorian = _working.ZmanimPopupCalendarGregorian,
 
                 // --- שולחן עבודה ---
                 OverlayEnabled = OverlayEnabledCheckBox.IsChecked == true,

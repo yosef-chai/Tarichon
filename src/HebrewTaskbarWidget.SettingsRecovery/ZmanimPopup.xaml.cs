@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
-using System.Windows.Controls;
+using System.Windows.Automation;
+using System.Windows.Input;
 using System.Windows.Media;
+using HebrewTaskbarWidget.Interop;
 using HebrewTaskbarWidget.Models;
 using HebrewTaskbarWidget.Services;
 
@@ -18,7 +21,7 @@ namespace HebrewTaskbarWidget
         public required string Name { get; init; }
         public required string DisplayTime { get; init; }
 
-        /// <summary>true עבור הזמן הקרוב ביותר שעוד לא עבר (רק כאשר היום המוצג הוא היום בפועל) - מוצג בצבע הדגשה (ברירת מחדל: כחול, כמו "חזרה להיום").</summary>
+        /// <summary>true עבור הזמן הקרוב ביותר שעוד לא עבר (רק כאשר היום המוצג הוא היום בפועל) - מודגש בצבע ההדגשה.</summary>
         public bool IsNext { get; init; }
 
         public static ZmanDisplayItem From(ZmanEntry entry, bool isNext) => new()
@@ -30,23 +33,25 @@ namespace HebrewTaskbarWidget
     }
 
     /// <summary>
-    /// חלונית הפופ-אפ (חלק 2 בפרוייקט): מציגה את פרטי היום הנבחר ואת רשימת זמני
-    /// היום ההלכתיים, עם ניווט בין ימים וקפיצה לתאריך ספציפי (בעזרת בורר תאריך
-    /// עברי מלא - ראו Controls.HebrewCalendarPicker). נפתחת בלחיצה שמאלית על
-    /// הוידג'ט הראשי, ונסגרת אוטומטית כשמאבדת פוקוס (בדומה לפופ-אפים רגילים
-    /// של Windows כמו תצוגת התאריך המובנית בשורת המשימות).
+    /// חלונית לוח הזמנים: פרטי היום הנבחר, זמני היום ההלכתיים, ניווט בין ימים ולוח שנה
+    /// עברי/לועזי לקפיצה לתאריך. נפתחת בלחיצה על הוידג'ט ונסגרת כשמאבדת פוקוס.
     /// </summary>
     public partial class ZmanimPopup : Window
     {
-        // מיקום החישוב נלקח מהגדרות המשתמש (פאנל ההגדרות, חלק 3); ברירת המחדל היא ירושלים.
+        /// <summary>השוליים השקופים סביב המשטח (בשביל הצל) - ראו Margin ב-ZmanimPopup.xaml.</summary>
+        internal const double ShadowInset = 12.0;
+
+        /// <summary>המרווח הנראה בין תחתית הלוח לראש הוידג'ט.</summary>
+        private const double GapAboveWidget = 6.0;
+
+        private static readonly CultureInfo HebrewCulture = new("he-IL");
+
+        // מיקום החישוב נלקח מהגדרות המשתמש; ברירת המחדל היא ירושלים.
         private GeoLocation _location = SettingsService.BuildLocation();
 
         private DateTime _selectedDate = AppTimeService.Today();
 
-        // מיקום ורוחב הוידג'ט שמעליו נפתח הפופ-אפ - נשמרים כדי שניתן יהיה
-        // לחשב מחדש את המיקום האנכי בכל פעם שגובה החלונית משתנה (למשל
-        // כשמתווספת/מוסרת שורת חג, או כשנפתח/נסגר בורר התאריך), ולא רק
-        // בפעם הראשונה שהחלונית נפתחת.
+        // מיקום ורוחב הוידג'ט - נשמרים כדי לחשב מחדש את המיקום בכל שינוי גובה.
         private double _widgetLeft;
         private double _widgetTop;
         private double _widgetWidth;
@@ -57,16 +62,10 @@ namespace HebrewTaskbarWidget
             "יום ראשון", "יום שני", "יום שלישי", "יום רביעי", "יום חמישי", "יום שישי", "יום שבת",
         };
 
-        private Services.GlobalClickWatcher? _clickWatcher;
+        private GlobalClickWatcher? _clickWatcher;
 
-        // ה-HWND של הוידג'ט הראשי בשורת המשימות (אם סופק) - נכלל ברשימת
-        // ה"חלונות המוגנים" של GlobalClickWatcher, כדי שלחיצה על הוידג'ט
-        // עצמו (בזמן שהפופ-אפ הזה פתוח) לא תיחשב "לחיצה בחוץ" ותסגור את
-        // הפופ-אפ *כאן* - זה מונע מירוץ שבו הפופ-אפ נסגר קודם (ע"י ה-
-        // Watcher) ואז מיד נפתח מחדש (ע"י ToggleZmanimPopup בוידג'ט,
-        // שבינתיים ראה את הפופ-אפ כ"כבר סגור"), כך שבפועל לחיצה חוזרת על
-        // הוידג'ט לא הייתה סוגרת כלום. עכשיו, בלחיצה על הוידג'ט, ה-Watcher
-        // מתעלם (כי הוידג'ט מוגן) ורק ToggleZmanimPopup עצמו מחליט לסגור.
+        // ה-HWND של הוידג'ט נחשב "מוגן": לחיצה עליו לא סוגרת כאן את הפופ-אפ, אלא
+        // מגיעה ל-ToggleZmanimPopup שסוגר אותו. אחרת הפופ-אפ היה נסגר ונפתח מחדש מיד.
         private readonly IntPtr _additionalProtectedHandle;
 
         public ZmanimPopup(IntPtr additionalProtectedHandle = default)
@@ -76,6 +75,7 @@ namespace HebrewTaskbarWidget
             InitializeComponent();
 
             ApplyTheme(SettingsService.Current.ZmanimPopupDarkMode);
+            HebrewDatePicker.SetMode(SettingsService.Current.ZmanimPopupCalendarGregorian ? CalendarSystem.Gregorian : CalendarSystem.Hebrew);
             RefreshDisplay();
 
             SettingsService.SettingsChanged += SettingsService_SettingsChanged;
@@ -86,22 +86,15 @@ namespace HebrewTaskbarWidget
                 _clickWatcher = null;
             };
 
-            // Deactivated (למעלה) הוא המנגנון הרגיל של WPF לסגירת פופ-אפ
-            // בלחיצה במקום אחר - אך לא תמיד עובד באופן עקבי עבור חלון עם
-            // AllowsTransparency+Topmost כמו זה. GlobalClickWatcher הוא רשת
-            // ביטחון נוספת ברמת Win32 גולמית, שלא תלויה במנגנון המיקוד/
-            // הפעלה הפנימי של WPF בכלל - ראו הערה מפורטת שם. נרשם רק אחרי
-            // שהחלון בפועל נפתח (SourceInitialized), כדי שיהיה HWND תקף
-            // להשוואה מול נקודת הלחיצה.
+            // Deactivated לא תמיד עקבי בחלון AllowsTransparency+Topmost, ולכן
+            // GlobalClickWatcher משמש רשת ביטחון ברמת Win32. נרשם רק כשיש HWND.
             SourceInitialized += (_, _) =>
             {
                 IntPtr myHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-                _clickWatcher = new Services.GlobalClickWatcher(
+                _clickWatcher = new GlobalClickWatcher(
                     onClickOutside: () => Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        // IsLoaded==false אחרי סגירה - מגן מפני קריאה כפולה
-                        // ל-Close() (גם Deactivated וגם ה-Watcher עשויים
-                        // לנסות לסגור את אותו חלון כמעט בו-זמנית).
+                        // מגן מסגירה כפולה (Deactivated וה-Watcher עשויים לפעול יחד)
                         if (IsLoaded)
                         {
                             Close();
@@ -114,15 +107,8 @@ namespace HebrewTaskbarWidget
         }
 
         /// <summary>
-        /// נקרא באופן סינכרוני כחלק מסבב המדידה/סידור (Arrange) של WPF עצמו -
-        /// לפני שהפריים מוצג בפועל על המסך. זה קריטי: אם היינו מגיבים לשינוי
-        /// הגובה דרך אירוע ה-SizeChanged הרגיל (שעלול "לפגר" פריים אחד או
-        /// יותר מאחורי הרינדור בפועל, בעיקר כשכמה שינויי תוכן קורים יחד -
-        /// למשל רשימת הזמנים מתחלפת **וגם** שורת החג נעלמת בו-זמנית, כמו
-        /// כשעוברים מיום עם מועד ליום בלי מועד), המשתמש היה עלול לראות פריים
-        /// אחד עם הגובה/מיקום הישן והתוכן החדש - "קפיצה" חזותית קצרה
-        /// בתחתית החלונית. מיקום מחדש כאן, בתוך סבב הסידור עצמו, מבטיח
-        /// שהמסך תמיד יציג את הגובה והמיקום המתואמים יחד, באותו פריים בדיוק.
+        /// ממקמים מחדש בתוך סבב הסידור עצמו, ולא ב-SizeChanged, כדי שהגובה והמיקום
+        /// החדשים יוצגו באותו פריים ולא תהיה "קפיצה" כשתוכן הלוח משתנה.
         /// </summary>
         protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
         {
@@ -149,8 +135,8 @@ namespace HebrewTaskbarWidget
         }
 
         /// <summary>
-        /// מחליף בין רקע כהה לרקע בהיר בלוח הזמנים - נשמר מיידית (לא ממתין
-        /// לפאנל ההגדרות הכללי), כדי שההעדפה תישמר גם אם הפופ-אפ נסגר.
+        /// מחליף בין רקע כהה לבהיר. נשמר מיד (בלי לחכות לפאנל ההגדרות) כדי שההעדפה
+        /// תישמר גם אם הפופ-אפ נסגר. אותה העדפה חלה גם על תפריט ההקשר של הוידג'ט.
         /// </summary>
         private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
         {
@@ -163,79 +149,23 @@ namespace HebrewTaskbarWidget
             ApplyTheme(newDarkMode);
         }
 
-        /// <summary>
-        /// מחליפה את כל צבעי לוח הזמנים (כולל בורר התאריך העברי המשותף) בין
-        /// ערכת נושא כהה לבהירה, ומעדכנת את סמל כפתור ההחלפה עצמו (שמש/ירח).
-        /// </summary>
-        private void ApplyTheme(bool dark)
+        /// <summary>מחילה את הפלטה המשותפת ומעדכנת את סמל הכפתור (שמש = מעבר לבהיר, ירח = מעבר לכהה).</summary>
+        internal void ApplyTheme(bool dark)
         {
-            if (dark)
-            {
-                SetBrush("PopupBackgroundBrush", "#F0202225");
-                SetBrush("PopupBorderBrush", "#33FFFFFF");
-                SetBrush("PopupPrimaryTextBrush", "#FFFFFF");
-                SetBrush("PopupSecondaryTextBrush", "#CFCFCF");
-                SetBrush("PopupTertiaryTextBrush", "#8F8F8F");
-                SetBrush("PopupMutedTextBrush", "#7A7A7A");
-                SetBrush("PopupSeparatorBrush", "#33FFFFFF");
-                SetBrush("PopupButtonHoverBrush", "#33FFFFFF");
-                SetBrush("PopupAccentBrush", "#9ECBFF");
-                SetBrush("PopupAccentTextBrush", "#1B1C1F");
-                SetBrush("PopupDatePickerHostBrush", "#141517");
+            AppTheme.Apply(Resources, dark);
 
-                SetBrush("CalPrimaryTextBrush", "#FFFFFF");
-                SetBrush("CalSecondaryTextBrush", "#8F8F8F");
-                SetBrush("CalHoverBrush", "#33FFFFFF");
-                SetBrush("CalAccentBrush", "#9ECBFF");
-                SetBrush("CalAccentTextBrush", "#1B1C1F");
-
-                ThemeToggleButton.Content = "\u2600"; // ☀ - לחיצה עוברת למצב בהיר
-                ThemeToggleButton.ToolTip = "עבור למצב בהיר";
-            }
-            else
-            {
-                SetBrush("PopupBackgroundBrush", "#F5F5F5F5");
-                SetBrush("PopupBorderBrush", "#33000000");
-                SetBrush("PopupPrimaryTextBrush", "#1B1C1F");
-                SetBrush("PopupSecondaryTextBrush", "#5B5D63");
-                SetBrush("PopupTertiaryTextBrush", "#787878");
-                SetBrush("PopupMutedTextBrush", "#8A8A8A");
-                SetBrush("PopupSeparatorBrush", "#22000000");
-                SetBrush("PopupButtonHoverBrush", "#14000000");
-                SetBrush("PopupAccentBrush", "#1A5FB4");
-                SetBrush("PopupAccentTextBrush", "#FFFFFF");
-                SetBrush("PopupDatePickerHostBrush", "#E8E8EA");
-
-                SetBrush("CalPrimaryTextBrush", "#1B1C1F");
-                SetBrush("CalSecondaryTextBrush", "#787878");
-                SetBrush("CalHoverBrush", "#14000000");
-                SetBrush("CalAccentBrush", "#1A5FB4");
-                SetBrush("CalAccentTextBrush", "#FFFFFF");
-
-                ThemeToggleButton.Content = "\u263D"; // ☽ - לחיצה עוברת למצב כהה
-                ThemeToggleButton.ToolTip = "עבור למצב כהה";
-            }
+            string tip = dark ? "מעבר למצב בהיר" : "מעבר למצב כהה";
+            ThemeToggleButton.Content = dark ? "" : "";
+            ThemeToggleButton.ToolTip = tip;
+            AutomationProperties.SetName(ThemeToggleButton, tip);
         }
 
-        private void SetBrush(string resourceKey, string hex)
-        {
-            var color = (Color)ColorConverter.ConvertFromString(hex);
-            Resources[resourceKey] = new SolidColorBrush(color);
-        }
-
-        /// <summary>
-        /// מצב "צמוד לקצה" של הוידג'ט הראשי בזמן פתיחת הלוח, כפי שחושב מראש
-        /// (לא בזמן אמת) ב-MainWindow.UpdatePosition - נצרך רק כאשר ההגדרה
-        /// היא Auto (ראו ComputeLeft).
-        /// </summary>
+        /// <summary>מצב "צמוד לקצה" של הוידג'ט בזמן הפתיחה, כפי שחושב ב-MainWindow - נצרך רק ביישור Auto.</summary>
         private WidgetAttachSide? _widgetEdgeSnapAlignment;
 
         /// <summary>
-        /// ממקמת את חלונית הפופ-אפ מעל הוידג'ט הראשי, לפי יישור אופקי הנבחר
-        /// בהגדרות (SettingsService.Current.ZmanimPopupAlignment - "וידג'ט"):
-        /// אוטומטי (ברירת המחדל - ממורכז, אלא אם הוידג'ט צמוד לקצה מסך, ואז
-        /// מיושר לאותו קצה), ממורכז תמיד, קצה ימין מיושר עם קצה ימין הוידג'ט,
-        /// או קצה שמאל מיושר עם קצה שמאל הוידג'ט.
+        /// ממקמת את הלוח מעל הוידג'ט לפי היישור שבהגדרות: אוטומטי (ממורכז, או צמוד לקצה
+        /// אם הוידג'ט צמוד לקצה מסך), ממורכז, צמוד לקצה הימני או צמוד לקצה השמאלי.
         /// </summary>
         public void PositionAboveWidget(double widgetLeft, double widgetTop, double widgetWidth, WidgetAttachSide? widgetEdgeSnapAlignment = null)
         {
@@ -244,21 +174,14 @@ namespace HebrewTaskbarWidget
             _widgetWidth = widgetWidth;
             _widgetEdgeSnapAlignment = widgetEdgeSnapAlignment;
 
-            // ממתינים למידות בפועל של החלון (SizeToContent) לפני חישוב המרכוז הסופי
+            // ממתינים למידות בפועל (SizeToContent) לפני החישוב
             UpdateLayout();
 
-            double popupWidth = ActualWidth > 0 ? ActualWidth : Width;
-            double popupHeight = ActualHeight > 0 ? ActualHeight : Height;
-
-            const double gap = 6.0;
-
-            Left = ComputeLeft(popupWidth);
-            Top = widgetTop - popupHeight - gap;
-
             _positioned = true;
+            RepositionKeepingBottomAnchored();
         }
 
-        /// <summary>מחשבת את מיקום ה-Left הרצוי לפי יישור ההגדרה הנוכחית - ראו הערה ב-PositionAboveWidget.</summary>
+        /// <summary>מיקום ה-Left של החלון לפי היישור הנוכחי, כולל קיזוז שולי הצל.</summary>
         private double ComputeLeft(double popupWidth)
         {
             ZmanimPopupAlignment alignment = SettingsService.Current.ZmanimPopupAlignment;
@@ -273,19 +196,27 @@ namespace HebrewTaskbarWidget
                 };
             }
 
+            return ComputePopupLeft(alignment, _widgetLeft, _widgetWidth, popupWidth);
+        }
+
+        /// <summary>חישוב טהור של Left: המשטח הנראה (בלי שולי הצל) מיושר לוידג'ט.</summary>
+        internal static double ComputePopupLeft(ZmanimPopupAlignment alignment, double widgetLeft, double widgetWidth, double popupWidth)
+        {
             return alignment switch
             {
-                ZmanimPopupAlignment.RightEdge => _widgetLeft + _widgetWidth - popupWidth,
-                ZmanimPopupAlignment.LeftEdge => _widgetLeft,
-                _ => _widgetLeft + (_widgetWidth / 2.0) - (popupWidth / 2.0),
+                ZmanimPopupAlignment.RightEdge => widgetLeft + widgetWidth - popupWidth + ShadowInset,
+                ZmanimPopupAlignment.LeftEdge => widgetLeft - ShadowInset,
+                _ => widgetLeft + (widgetWidth / 2.0) - (popupWidth / 2.0),
             };
         }
 
+        /// <summary>חישוב טהור של Top: תחתית המשטח הנראה נמצאת GapAboveWidget פיקסלים מעל הוידג'ט.</summary>
+        internal static double ComputePopupTop(double widgetTop, double popupHeight) =>
+            widgetTop - popupHeight + ShadowInset - GapAboveWidget;
+
         /// <summary>
-        /// ממקמת מחדש את הפופ-אפ בכל פעם שגובהו משתנה (למשל כשמתווספת שורת
-        /// חג, או כשבורר התאריך נפתח/נסגר), כך שהקצה התחתון יישאר קבוע צמוד
-        /// לוידג'ט - וההתארכות תתבצע כלפי מעלה בלבד ולא כלפי מטה (שם היא
-        /// הייתה נחתכת ע"י שורת המשימות/נעלמת מתחתיה).
+        /// ממקמת מחדש בכל שינוי גובה (שורת חג, פתיחת לוח השנה) כך שהתחתית נשארת צמודה
+        /// לוידג'ט וההתארכות היא כלפי מעלה, ולא אל מתחת לשורת המשימות.
         /// </summary>
         private void RepositionKeepingBottomAnchored()
         {
@@ -297,10 +228,66 @@ namespace HebrewTaskbarWidget
             double popupWidth = ActualWidth > 0 ? ActualWidth : Width;
             double popupHeight = ActualHeight > 0 ? ActualHeight : Height;
 
-            const double gap = 6.0;
+            FitZmanimListToScreen(popupHeight);
 
             Left = ComputeLeft(popupWidth);
-            Top = _widgetTop - popupHeight - gap;
+            Top = ComputePopupTop(_widgetTop, popupHeight);
+        }
+
+        /// <summary>
+        /// אם הלוח גבוה מהשטח הפנוי מעל הוידג'ט (למשל כשלוח השנה פתוח במסך נמוך),
+        /// מגביל את גובה רשימת הזמנים כך שהיא נגללת במקום שהלוח ייחתך בראש המסך.
+        /// </summary>
+        private void FitZmanimListToScreen(double popupHeight)
+        {
+            if (!TryGetWorkAreaTop(out double workTop))
+            {
+                return;
+            }
+
+            const double topMargin = 8.0;
+            double available = _widgetTop - GapAboveWidget - workTop - topMargin;
+            double visibleHeight = popupHeight - 2 * ShadowInset;
+            double maxList = ComputeListMaxHeight(available, visibleHeight, ZmanimScroll.ActualHeight, ZmanimList.ActualHeight);
+
+            if (!maxList.Equals(ZmanimScroll.MaxHeight) && Math.Abs(ZmanimScroll.MaxHeight - maxList) > 0.5)
+            {
+                ZmanimScroll.MaxHeight = maxList;
+            }
+        }
+
+        /// <summary>
+        /// הגובה המקסימלי לרשימה: מה שנשאר אחרי שאר התוכן, ולא פחות מ-120 (כמה שורות).
+        /// אין הגבלה (Infinity) כשהרשימה המלאה (naturalListHeight) נכנסת כולה.
+        /// </summary>
+        internal static double ComputeListMaxHeight(double availableHeight, double visibleHeight, double currentListHeight, double naturalListHeight)
+        {
+            double otherContent = visibleHeight - currentListHeight;
+            double room = availableHeight - otherContent;
+            return room >= naturalListHeight ? double.PositiveInfinity : Math.Max(120.0, room);
+        }
+
+        private bool TryGetWorkAreaTop(out double workTopDip)
+        {
+            workTopDip = 0;
+            IntPtr handle = _additionalProtectedHandle != IntPtr.Zero
+                ? _additionalProtectedHandle
+                : new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (handle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            const uint MonitorDefaultToNearest = 2;
+            IntPtr monitor = NativeMethods.MonitorFromWindow(handle, MonitorDefaultToNearest);
+            var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+            if (monitor == IntPtr.Zero || !NativeMethods.GetMonitorInfo(monitor, ref info))
+            {
+                return false;
+            }
+
+            workTopDip = info.rcWork.Top / VisualTreeHelper.GetDpi(this).DpiScaleY;
+            return true;
         }
 
         private void RefreshDisplay()
@@ -308,18 +295,16 @@ namespace HebrewTaskbarWidget
             HebrewDateDisplay hebrewDisplay = HebrewDateFormatter.Format(_selectedDate);
             DateTime today = AppTimeService.Today();
 
-            DayHeaderText.Text = DayOfWeekNames[(int)_selectedDate.DayOfWeek];
-
+            string dayName = DayOfWeekNames[(int)_selectedDate.DayOfWeek];
             string? parashaName = ParashaService.GetParashaName(_selectedDate);
-            ParashaHeaderText.Text = parashaName is null ? string.Empty : $"פרשת {parashaName}";
-            ParashaHeaderText.Visibility = parashaName is null ? Visibility.Collapsed : Visibility.Visible;
+            DayHeaderText.Text = parashaName is null ? dayName : $"{dayName} · פרשת {parashaName}";
 
             HebrewDateHeaderText.Text = hebrewDisplay.BottomLine;
-            GregorianDateHeaderText.Text = "· " + _selectedDate.ToString("dd/MM/yyyy");
+            GregorianDateHeaderText.Text = FormatGregorianLong(_selectedDate);
 
             string? holidayName = HolidayCalendar.GetDisplayText(_selectedDate, HolidayDisplayContext.Popup);
             HolidayHeaderText.Text = holidayName ?? string.Empty;
-            HolidayHeaderText.Visibility = holidayName is null ? Visibility.Collapsed : Visibility.Visible;
+            HolidayChip.Visibility = holidayName is null ? Visibility.Collapsed : Visibility.Visible;
 
             IReadOnlyList<ZmanEntry> zmanim = ZmanimCalendar.Calculate(
                     _selectedDate, _location,
@@ -331,9 +316,7 @@ namespace HebrewTaskbarWidget
                 .Where(z => SettingsService.Current.IsZmanVisible(z.Key))
                 .ToList();
 
-            // הזמן "הקרוב" (מודגש בצבע הדגשה) - רק כאשר היום המוצג הוא היום
-            // בפועל; הראשון ברשימה (שממילא בנויה בסדר כרונולוגי) שזמנו עדיין
-            // לא הגיע.
+            // הזמן "הקרוב" מסומן רק כשמוצג היום עצמו: הראשון ברשימה (הכרונולוגית) שעוד לא הגיע.
             ZmanEntry? nextEntry = null;
             if (_selectedDate.Date == today)
             {
@@ -341,46 +324,49 @@ namespace HebrewTaskbarWidget
                 nextEntry = zmanim.FirstOrDefault(z => z.Time.HasValue && z.Time.Value > now);
             }
 
-            var displayItems = new List<ZmanDisplayItem>(zmanim.Count);
-            foreach (ZmanEntry entry in zmanim)
-            {
-                displayItems.Add(ZmanDisplayItem.From(entry, isNext: entry == nextEntry));
-            }
-
-            ZmanimList.ItemsSource = displayItems;
+            ZmanimList.ItemsSource = zmanim.Select(entry => ZmanDisplayItem.From(entry, isNext: entry == nextEntry)).ToList();
 
             TodayButton.Visibility = _selectedDate.Date != today ? Visibility.Visible : Visibility.Collapsed;
 
             HebrewDatePicker.ShowMonthContaining(_selectedDate);
         }
 
-        private void PrevDayButton_Click(object sender, RoutedEventArgs e)
-        {
-            _selectedDate = _selectedDate.AddDays(-1);
-            RefreshDisplay();
-        }
+        /// <summary>"5 באוקטובר 2026".</summary>
+        internal static string FormatGregorianLong(DateTime date) =>
+            $"{date.Day} ב{CalendarMonthBuilder.GetGregorianMonthName(date.Month)} {date.Year.ToString(HebrewCulture)}";
 
-        private void NextDayButton_Click(object sender, RoutedEventArgs e)
-        {
-            _selectedDate = _selectedDate.AddDays(1);
-            RefreshDisplay();
-        }
+        private void PrevDayButton_Click(object sender, RoutedEventArgs e) => MoveToDate(_selectedDate.AddDays(-1));
 
-        private void TodayButton_Click(object sender, RoutedEventArgs e)
+        private void NextDayButton_Click(object sender, RoutedEventArgs e) => MoveToDate(_selectedDate.AddDays(1));
+
+        private void TodayButton_Click(object sender, RoutedEventArgs e) => MoveToDate(AppTimeService.Today());
+
+        private void MoveToDate(DateTime date)
         {
-            _selectedDate = AppTimeService.Today();
+            if (!CalendarMonthBuilder.IsSupported(date))
+            {
+                return;
+            }
+
+            _selectedDate = date.Date;
             RefreshDisplay();
         }
 
         private void DatePickerButton_Click(object sender, RoutedEventArgs e)
         {
             bool willShow = DatePickerHost.Visibility != Visibility.Visible;
-            DatePickerHost.Visibility = willShow ? Visibility.Visible : Visibility.Collapsed;
+            SetDatePickerOpen(willShow);
 
             if (willShow)
             {
                 HebrewDatePicker.ShowMonthContaining(_selectedDate);
             }
+        }
+
+        private void SetDatePickerOpen(bool open)
+        {
+            DatePickerHost.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+            DatePickerButton.IsChecked = open;
         }
 
         private void HebrewDatePicker_DateSelected(object? sender, DateTime pickedDate)
@@ -391,12 +377,36 @@ namespace HebrewTaskbarWidget
                 RefreshDisplay();
             }
 
-            DatePickerHost.Visibility = Visibility.Collapsed;
+            SetDatePickerOpen(false);
+        }
+
+        private void HebrewDatePicker_ModeChanged(object? sender, CalendarSystem mode)
+        {
+            AppSettings settings = SettingsService.Current;
+            settings.ZmanimPopupCalendarGregorian = mode == CalendarSystem.Gregorian;
+            SettingsService.Save(settings);
+        }
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                if (DatePickerHost.Visibility == Visibility.Visible)
+                {
+                    SetDatePickerOpen(false);
+                }
+                else
+                {
+                    Close();
+                }
+
+                e.Handled = true;
+            }
         }
 
         private void ZmanimPopup_Deactivated(object? sender, EventArgs e)
         {
-            // התנהגות פופ-אפ סטנדרטית: נסגר כשלוחצים במקום אחר על המסך
+            // התנהגות פופ-אפ רגילה: נסגר כשלוחצים במקום אחר
             Close();
         }
     }
