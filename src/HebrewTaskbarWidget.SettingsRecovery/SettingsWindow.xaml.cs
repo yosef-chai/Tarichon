@@ -843,7 +843,7 @@ namespace HebrewTaskbarWidget
             {
                 return Services.ZmanimCalendar.Calculate(
                     AppTimeService.Today(), BuildEditedLocation(), BuildEditedZmanimOptions(),
-                    forceIncludeConditional: true);
+                    forSettingsList: true);
             }
             catch
             {
@@ -854,7 +854,7 @@ namespace HebrewTaskbarWidget
         private ZmanCalculationMethod SelectedGlobalMethod()
         {
             int index = ZmanCalculationMethodComboBox.SelectedIndex;
-            return index >= 0 && index < ZmanimMethods.All.Count ? ZmanimMethods.All[index] : ZmanCalculationMethod.Gra;
+            return index >= 0 && index < ZmanimMethods.All.Count ? ZmanimMethods.All[index] : ZmanCalculationMethod.OrHaChaim;
         }
 
         /// <summary>הגדרות החישוב כפי שהן כרגע בחלון (כולל שינויים שעוד לא נשמרו).</summary>
@@ -931,7 +931,7 @@ namespace HebrewTaskbarWidget
                 IReadOnlyList<Services.ZmanEntry> testEntries = Services.ZmanimCalendar.Calculate(
                     AppTimeService.Today(), BuildEditedLocation(),
                     BuildEditedZmanimOptions() with { Customizations = testCustomizations, DuplicateRows = Array.Empty<ZmanDuplicateRow>() },
-                    forceIncludeConditional: true);
+                    forSettingsList: true);
 
                 return testEntries.FirstOrDefault(e => e.Key == baseZmanName)?.Time;
             }

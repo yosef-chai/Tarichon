@@ -42,7 +42,7 @@ namespace HebrewTaskbarWidget.Services
     /// </summary>
     public sealed record ZmanimOptions
     {
-        public ZmanCalculationMethod Method { get; init; } = ZmanCalculationMethod.Gra;
+        public ZmanCalculationMethod Method { get; init; } = ZmanCalculationMethod.OrHaChaim;
         public int CandleLightingMinutesBeforeSunset { get; init; } = 40;
         public bool CandleLightingByLuach { get; init; } = true;
         public int? TzeitHakochavimMinutesAfterSunset { get; init; }
@@ -92,7 +92,7 @@ namespace HebrewTaskbarWidget.Services
         public const string NameRabbeinuTam = "רבנו תם (72 דקות)";
         public const string NameCandleLighting = "הדלקת נרות";
 
-        /// <summary>כל שמות הזמנים לפי סדר הופעתם ברשימה - נוח לשימוש בפאנל ההגדרות.</summary>
+        /// <summary>כל שמות הזמנים לפי סדר הופעתם ברשימה.</summary>
         public static readonly IReadOnlyList<string> AllZmanNames = new[]
         {
             NameAlotHaShachar, NameMisheyakir, NameNetz,
@@ -101,6 +101,26 @@ namespace HebrewTaskbarWidget.Services
             NameSofZmanAchilatChametz, NameSofZmanBiurChametz,
             NameChatzot, NameMinchaGedola, NameMinchaKetana, NamePelagHaMincha,
             NameCandleLighting, NameShkia, NameTzeitHakochavim, NameTzeitShabbat, NameRabbeinuTam,
+        };
+
+        /// <summary>
+        /// זמנים שמופיעים מעצמם רק בימים שהם שייכים אליהם, בלי הגדרה ידנית
+        /// ובלי שורה ברשימות שבהגדרות: זמני החמץ בערב פסח, ורבנו תם במוצאי
+        /// שבת וחג (אם צאת השבת והחג מוצג).
+        /// </summary>
+        public static bool IsShownAutomatically(string baseName) =>
+            baseName is NameSofZmanAchilatChametz or NameSofZmanBiurChametz or NameRabbeinuTam;
+
+        /// <summary>
+        /// לפי איזה זמן נקבע אם הזמן הזה מוצג (ראו AppSettings.IsZmanVisible):
+        /// בדרך כלל הזמן עצמו, רבנו תם לפי צאת השבת והחג, ו-null לזמני החמץ
+        /// (מוצגים תמיד).
+        /// </summary>
+        public static string? VisibilityKey(string zmanKey) => zmanKey switch
+        {
+            NameSofZmanAchilatChametz or NameSofZmanBiurChametz => null,
+            NameRabbeinuTam => NameTzeitShabbat,
+            _ => zmanKey,
         };
 
         /// <summary>
@@ -151,22 +171,27 @@ namespace HebrewTaskbarWidget.Services
 
         /// <summary>
         /// השם שמוצג בהגדרות ליד תיבת הסימון - השם הקנוני, אלא אם הפירוט
-        /// שבו לא מתאים לשיטה שנבחרה (למשל "16.1°" בלוח אור החיים).
+        /// שבו לא מתאים לשיטה שנבחרה (למשל "16.1°", שלא נכון לאף אחד מהלוחות).
         /// </summary>
         public static string GetSettingsDisplayName(string canonicalName, ZmanCalculationMethod method)
         {
             bool canonicalDetailFits = canonicalName switch
             {
-                NameAlotHaShachar => method == ZmanCalculationMethod.Gra,
-                NameRabbeinuTam => method is ZmanCalculationMethod.Gra or ZmanCalculationMethod.Mga72Zmaniyos or ZmanCalculationMethod.ItimLeBina,
+                NameAlotHaShachar => false,
+                NameRabbeinuTam => ZmanimMethods.Normalize(method) == ZmanCalculationMethod.ItimLeBina,
                 _ => true,
             };
 
             return canonicalDetailFits ? canonicalName : DefaultDisplayName(canonicalName);
         }
 
+        /// <summary>
+        /// זמני היום לתאריך. forSettingsList = הרשימות שבהגדרות: כל הזמנים
+        /// שאפשר להגדיר (כולל הדלקת נרות וצאת השבת גם ביום חול), בלי הזמנים
+        /// שמופיעים מעצמם (ראו <see cref="IsShownAutomatically"/>).
+        /// </summary>
         public static IReadOnlyList<ZmanEntry> Calculate(
-            DateTime date, GeoLocation location, ZmanimOptions options, bool forceIncludeConditional = false)
+            DateTime date, GeoLocation location, ZmanimOptions options, bool forSettingsList = false)
         {
             TimeZoneInfo timeZone = ResolveTimeZone(location.TimeZoneId);
 
@@ -205,18 +230,23 @@ namespace HebrewTaskbarWidget.Services
 
             foreach (string baseName in AllZmanNames)
             {
-                if (!forceIncludeConditional)
-                {
-                    if ((baseName is NameSofZmanAchilatChametz or NameSofZmanBiurChametz && !isErevPesach) ||
-                        (baseName == NameTzeitShabbat && !isMotzaeiShabbatOrYomTov))
+                bool include = forSettingsList
+                    ? !IsShownAutomatically(baseName)
+                    : baseName switch
                     {
-                        continue;
-                    }
+                        NameSofZmanAchilatChametz or NameSofZmanBiurChametz => isErevPesach,
+                        NameTzeitShabbat or NameRabbeinuTam => isMotzaeiShabbatOrYomTov,
+                        _ => true,
+                    };
+
+                if (!include)
+                {
+                    continue;
                 }
 
                 if (baseName == NameCandleLighting)
                 {
-                    AddCandleLighting(entries, date, options, general, customizationByBase, forceIncludeConditional);
+                    AddCandleLighting(entries, date, options, general, customizationByBase, forSettingsList);
                     continue;
                 }
 
@@ -231,7 +261,8 @@ namespace HebrewTaskbarWidget.Services
                 DateTime? primaryTime = ResolveZmanTime(baseName, Times(effectiveMethod), options.TzeitHakochavimMinutesAfterSunset, options.RoundLechumra);
                 var primaryEntry = new ZmanEntry { Key = baseName, DisplayName = displayName, VoiceKey = baseName, Time = primaryTime };
 
-                if (duplicateByBase.TryGetValue(baseName, out ZmanDuplicateRow? dup))
+                // לזמנים שמופיעים מעצמם אין שורה בהגדרות, ולכן גם לא שורה כפולה.
+                if (!IsShownAutomatically(baseName) && duplicateByBase.TryGetValue(baseName, out ZmanDuplicateRow? dup))
                 {
                     // "צאת הכוכבים" הכפול לא מקבל את הדריסה הידנית (דקות-אחרי-
                     // שקיעה) - זו רלוונטית רק לשורה ה"ראשית", כדי שהכפילה תישאר

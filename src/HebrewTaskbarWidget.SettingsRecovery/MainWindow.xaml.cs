@@ -22,18 +22,6 @@ namespace HebrewTaskbarWidget
         // תדירות בדיקת מיקום השעון מחדש (שורת המשימות עשויה לזוז/להשתנות בגודלה)
         private static readonly TimeSpan PositionPollInterval = TimeSpan.FromMilliseconds(500);
 
-        // תדירות אילוץ חוזר של "עליון" (Topmost) - מהירה יותר מבדיקת המיקום,
-        // כדי שהוידג'ט לא "ייעלם" (יוסתר מאחורי שורת המשימות) גם לרגע קצר
-        // בכל פעם ששורת המשימות עצמה נאבקת בחזרה לקדמת סדר השכבות (קורה בכל
-        // אינטראקציה איתה - לחיצה על סמל, פתיחת תפריט התחל וכו').
-        //
-        // הערה (0.5.6): גרסאות 0.5.4 ו-0.5.5 ניסו כאן שני "טלאים" שונים
-        // (Hook מבוסס-אירועים, ואז טיימר מהיר במיוחד) - אף אחד מהם לא היה
-        // פתרון אמיתי לבעיה, ושניהם הוסרו. הערך כאן הוחזר בכוונה בדיוק
-        // לזה שהיה בגרסה 0.5.3, עד לפתרון יסודי אמיתי (בהשראת תוכנות כמו
-        // BatteryBar, שבהן התופעה הזו לא קיימת כלל) שיטופל בסבב נפרד.
-        private static readonly TimeSpan TopmostReassertInterval = TimeSpan.FromMilliseconds(150);
-
         // תדירות בדיקת שינוי בתוכן (יום/תאריך/פרשה/שעה לועזית) - פעם בשנייה
         private static readonly TimeSpan ContentPollInterval = TimeSpan.FromSeconds(1);
 
@@ -49,9 +37,11 @@ namespace HebrewTaskbarWidget
         private static readonly TimeSpan ClockVisibilityReassertInterval = TimeSpan.FromSeconds(1.5);
 
         private readonly DispatcherTimer _positionTimer;
-        private readonly DispatcherTimer _topmostTimer;
         private readonly DispatcherTimer _contentTimer;
         private readonly DispatcherTimer _clockVisibilityTimer;
+
+        // שומר שהוידג'ט יישאר מעל שורת המשימות - ראו TaskbarZOrderGuard.
+        private TaskbarZOrderGuard? _zOrderGuard;
 
         private uint _taskbarCreatedMessage;
         private string _lastTopLine = string.Empty;
@@ -105,9 +95,7 @@ namespace HebrewTaskbarWidget
         /// true אם החלון הקדמי (Foreground) הנוכחי במערכת שייך לאחד מתהליכי
         /// מסך-העל הידועים של ה-Shell (ראו ShellOverlayProcessNames) - כלומר
         /// תפריט ההתחל/חיפוש/Widgets וכו' פתוח כרגע. ראו הערה מפורטת למעלה.
-        /// עטופה ב-try/catch: Process.GetProcessById עלולה לזרוק אם התהליך
-        /// כבר נסגר בדיוק בין השאילתות (מקרה קצה נדיר, לא קריטי - פשוט
-        /// מתייחסים לזה כ"לא פתוח").
+        /// אם התהליך כבר נסגר בין השאילתות, מתייחסים לזה כ"לא פתוח".
         /// </summary>
         private static bool IsShellOverlayLikelyOpen()
         {
@@ -123,14 +111,33 @@ namespace HebrewTaskbarWidget
                 return false;
             }
 
+            string? processName = GetProcessName(processId);
+            return processName is not null && ShellOverlayProcessNames.Contains(processName);
+        }
+
+        /// <summary>
+        /// שם התהליך (בלי ".exe"), או null. בלי Process.GetProcessById, שסורק את
+        /// כל התהליכים במערכת בכל קריאה - וזה רץ כל חצי שנייה על תהליכון הממשק.
+        /// </summary>
+        private static string? GetProcessName(uint processId)
+        {
+            IntPtr process = NativeMethods.OpenProcess(NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+            if (process == IntPtr.Zero)
+            {
+                return null;
+            }
+
             try
             {
-                using Process process = Process.GetProcessById((int)processId);
-                return ShellOverlayProcessNames.Contains(process.ProcessName);
+                var path = new System.Text.StringBuilder(1024);
+                uint size = (uint)path.Capacity;
+                return NativeMethods.QueryFullProcessImageName(process, 0, path, ref size)
+                    ? System.IO.Path.GetFileNameWithoutExtension(path.ToString())
+                    : null;
             }
-            catch
+            finally
             {
-                return false;
+                NativeMethods.CloseHandle(process);
             }
         }
 
@@ -193,12 +200,6 @@ namespace HebrewTaskbarWidget
             };
             _positionTimer.Tick += (_, _) => UpdatePosition();
 
-            _topmostTimer = new DispatcherTimer(DispatcherPriority.Send)
-            {
-                Interval = TopmostReassertInterval,
-            };
-            _topmostTimer.Tick += (_, _) => ReassertTopmost();
-
             // 5 דקות אחרי עליית התוכנה (בין אם נפתחה ידנית ובין אם עלתה
             // אוטומטית עם Windows) - בודקים (שוב, בשקט) אם יש עדכון זמין,
             // ואם כן שואלים את המשתמש במפורש אם לעדכן (בדיוק כמו ההודעה
@@ -212,13 +213,12 @@ namespace HebrewTaskbarWidget
             };
             updatePromptTimer.Start();
 
-            // כשתפריט ההקשר פתוח, משהים את האכיפה החוזרת של Topmost על
-            // הוידג'ט עצמו - זו הייתה הסיבה לכך שהתפריט (שאינו Topmost
-            // בעצמו) יכול "להיבלע" מתחת לוידג'ט בין אכיפה לאכיפה.
+            // כשתפריט ההקשר פתוח, לא מעלים את הוידג'ט מעל שורת המשימות - התפריט
+            // (שאינו Topmost בעצמו) היה "נבלע" מתחת לוידג'ט.
             if (WidgetBackground.ContextMenu is { } contextMenu)
             {
-                contextMenu.Opened += (_, _) => _topmostTimer.Stop();
-                contextMenu.Closed += (_, _) => _topmostTimer.Start();
+                contextMenu.Opened += (_, _) => SetZOrderGuardPaused(true);
+                contextMenu.Closed += (_, _) => SetZOrderGuardPaused(false);
             }
 
             _contentTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -354,6 +354,7 @@ namespace HebrewTaskbarWidget
             if (_taskbarCreatedMessage != 0 && msg == _taskbarCreatedMessage)
             {
                 UpdatePosition();
+                _zOrderGuard?.OnTaskbarRecreated();
                 return IntPtr.Zero;
             }
 
@@ -636,7 +637,7 @@ namespace HebrewTaskbarWidget
         {
             if (!NativeMethods.IsWindowVisible(clockWnd))
             {
-                NativeMethods.ShowWindow(clockWnd, NativeMethods.SW_SHOW);
+                NativeMethods.ShowWindowAsync(clockWnd, NativeMethods.SW_SHOW);
             }
 
             NativeMethods.GetCursorPos(out NativeMethods.POINT originalCursor);
@@ -655,24 +656,12 @@ namespace HebrewTaskbarWidget
             NativeMethods.SetCursorPos(originalCursor.X, originalCursor.Y);
         }
 
-        /// <summary>
-        /// דוחפת את הוידג'ט בחזרה לקדמת סדר-השכבות (Z-Order) בלי לשנות מיקוד
-        /// (SWP_NOACTIVATE) ובלי לזוז/להשתנות בגודל. פועלת בתדירות גבוהה כדי
-        /// "לנצח" את שורת המשימות במאבקי ה-Topmost שמתרחשים בכל אינטראקציה
-        /// איתה, ובכך למנוע מהוידג'ט "להיעלם" מאחוריה.
-        /// </summary>
-        private void ReassertTopmost()
+        private void SetZOrderGuardPaused(bool paused)
         {
-            if (_hwnd == IntPtr.Zero)
+            if (_zOrderGuard is not null)
             {
-                return;
+                _zOrderGuard.Paused = paused;
             }
-
-            NativeMethods.SetWindowPos(
-                _hwnd,
-                NativeMethods.HWND_TOPMOST,
-                0, 0, 0, 0,
-                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
         }
 
         /// <summary>
@@ -1024,8 +1013,10 @@ namespace HebrewTaskbarWidget
 
             _positionTimer.Start();
             _contentTimer.Start();
-            _topmostTimer.Start();
             _clockVisibilityTimer.Start();
+
+            _zOrderGuard ??= new TaskbarZOrderGuard(_hwnd, Dispatcher);
+            _zOrderGuard.Start();
 
             // מיישמים מיד את מצב ההסתרה השמור (למשל אם המשתמש הפעיל את זה
             // בהפעלה קודמת) - בלי להמתין לטיק הראשון של הטיימר.
@@ -1428,9 +1419,9 @@ namespace HebrewTaskbarWidget
         private void ShutDownCompletely()
         {
             _positionTimer.Stop();
-            _topmostTimer.Stop();
             _contentTimer.Stop();
             _clockVisibilityTimer.Stop();
+            _zOrderGuard?.Dispose();
 
             // משחזרים את הגלוי של שעון Windows לפני היציאה - אחרת הוא יישאר
             // מוסתר גם אחרי סגירת התוכנה, בלי שום דרך להחזירו מלבד הפעלה מחדש.

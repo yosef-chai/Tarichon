@@ -183,6 +183,61 @@ namespace HebrewTaskbarWidget.Interop
         public const uint SWP_NOSIZE = 0x0001;
         public const uint SWP_NOACTIVATE = 0x0010;
         public const uint SWP_NOZORDER = 0x0004;
+        public const uint SWP_NOOWNERZORDER = 0x0200;
+
+        // --- שמירה על הוידג'ט מעל שורת המשימות (ראו TaskbarZOrderGuard) ---
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        /// <summary>החלון שמעל החלון הנתון בסדר השכבות.</summary>
+        public const uint GW_HWNDPREV = 3;
+
+        public const int WS_EX_TOPMOST = 0x00000008;
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetDesktopWindow();
+
+        public delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint idEventThread, uint dwmsEventTime);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+        public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+        public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+        public const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+        public const uint EVENT_SYSTEM_MINIMIZEEND = 0x0017;
+        public const uint EVENT_OBJECT_SHOW = 0x8002;
+        public const uint EVENT_OBJECT_REORDER = 0x8004;
+        public const int OBJID_WINDOW = 0;
+
+        /// <summary>
+        /// כמו ShowWindow, אבל לא ממתין שהחלון יטפל בבקשה. לחלון של תהליך אחר
+        /// (השעון של Explorer) ShowWindow רגיל חוסם עד ש-Explorer מתפנה - וכשהוא
+        /// עסוק (פתיחת תפריט התחל, תוכנה שנפתחת) זה תוקע את הוידג'ט כולו.
+        /// </summary>
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
+        // --- שם התהליך של חלון, בלי לסרוק את כל התהליכים במערכת ---
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool CloseHandle(IntPtr hObject);
+
+        public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         public const uint MONITOR_DEFAULTTONEAREST = 2;
 

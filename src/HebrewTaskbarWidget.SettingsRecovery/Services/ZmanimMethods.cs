@@ -51,45 +51,40 @@ namespace HebrewTaskbarWidget.Services
     /// </summary>
     public static class ZmanimMethods
     {
-        /// <summary>כל השיטות, לפי סדר הופעתן בתיבות הבחירה (= ערך ה-enum).</summary>
+        /// <summary>השיטות שאפשר לבחור, לפי סדר הופעתן בתיבות הבחירה.</summary>
         public static readonly IReadOnlyList<ZmanCalculationMethod> All = new[]
         {
-            ZmanCalculationMethod.Gra,
-            ZmanCalculationMethod.Mga72Zmaniyos,
             ZmanCalculationMethod.OrHaChaim,
             ZmanCalculationMethod.ItimLeBina,
         };
+
+        /// <summary>
+        /// השיטות הישנות (זווית שמש, 72 דקות זמניות) הוסרו. הגדרות שנשמרו
+        /// איתן מחושבות לפי לוח אור החיים.
+        /// </summary>
+        public static ZmanCalculationMethod Normalize(ZmanCalculationMethod method) =>
+            IsLuach(method) ? method : ZmanCalculationMethod.OrHaChaim;
 
         // ערכי "במעלות" של עתים לבינה, כפי שהם שמורים במאגר הלוח (מתחת לאופק הנראה).
         private const double Itim90MinutesStored = 18.9712;
         private const double Itim72MinutesStored = 15.2193;
         private const double Itim18MinutesStored = 3.8217;
 
-        public static string Label(ZmanCalculationMethod method) => method switch
+        public static string Label(ZmanCalculationMethod method) => Normalize(method) switch
         {
-            ZmanCalculationMethod.Gra => "זווית שמש (16.1°/8.5°)",
-            ZmanCalculationMethod.Mga72Zmaniyos => "72 דקות זמניות",
-            ZmanCalculationMethod.OrHaChaim => "לוח אור החיים",
             ZmanCalculationMethod.ItimLeBina => "לוח עתים לבינה",
-            _ => method.ToString(),
+            _ => "לוח אור החיים",
         };
 
         /// <summary>סיומת קצרה לשם שורה כפולה, למשל "סוף זמן ק"ש (אור החיים)".</summary>
-        public static string ShortLabel(ZmanCalculationMethod method) => method switch
+        public static string ShortLabel(ZmanCalculationMethod method) => Normalize(method) switch
         {
-            ZmanCalculationMethod.Gra => "זווית שמש",
-            ZmanCalculationMethod.Mga72Zmaniyos => "72 דקות",
-            ZmanCalculationMethod.OrHaChaim => "אור החיים",
             ZmanCalculationMethod.ItimLeBina => "עתים לבינה",
-            _ => method.ToString(),
+            _ => "אור החיים",
         };
 
-        public static string Description(ZmanCalculationMethod method) => method switch
+        public static string Description(ZmanCalculationMethod method) => Normalize(method) switch
         {
-            ZmanCalculationMethod.Gra =>
-                "עלות השחר 16.1° וצאת הכוכבים 8.5°. שעות זמניות מהנץ ועד השקיעה מהגובה.",
-            ZmanCalculationMethod.Mga72Zmaniyos =>
-                "עלות השחר וצאת הכוכבים 72 דקות זמניות לפני הנץ ואחרי השקיעה (במישור). שאר הזמנים כמו בזווית שמש.",
             ZmanCalculationMethod.OrHaChaim =>
                 "כמו בלוח של ישיבת אור החיים (מרן הרב עובדיה יוסף): הכל בדקות זמניות מהנץ והשקיעה מהגובה. " +
                 "עלות השחר 72, טלית ותפילין 66, צאת הכוכבים 13.5, רבנו תם 72 דקות זמניות. הנץ המוצג - במישור. " +
@@ -162,66 +157,21 @@ namespace HebrewTaskbarWidget.Services
         }
 
         /// <summary>כמה דקות לפני השקיעה מדליקים נרות לפי הלוח, או null אם השיטה אינה לוח.</summary>
-        public static int? LuachCandleLightingMinutes(ZmanCalculationMethod method, GeoLocation location) => method switch
+        public static int LuachCandleLightingMinutes(ZmanCalculationMethod method, GeoLocation location) => Normalize(method) switch
         {
-            ZmanCalculationMethod.OrHaChaim => HolidayOptions.IsJerusalem(location.Name) ? 40 : 20,
             ZmanCalculationMethod.ItimLeBina => GetItimProfile(location).CandleLightingMinutes,
-            _ => null,
+            _ => HolidayOptions.IsJerusalem(location.Name) ? 40 : 20,
         };
 
         internal static MethodTimes Compute(ZmanCalculationMethod method, DateTime date, GeoLocation location, TimeZoneInfo timeZone)
         {
             var sun = new SunCalculator(date, location, timeZone);
 
-            return method switch
+            return Normalize(method) switch
             {
-                ZmanCalculationMethod.OrHaChaim => ComputeOrHaChaim(sun, location),
                 ZmanCalculationMethod.ItimLeBina => ComputeItimLeBina(sun, location),
-                _ => ComputeClassic(sun, location, method),
+                _ => ComputeOrHaChaim(sun, location),
             };
-        }
-
-        /// <summary>זווית שמש (16.1°/8.5°) או 72 דקות זמניות - השיטות המקוריות של התוכנה.</summary>
-        private static MethodTimes ComputeClassic(SunCalculator sun, GeoLocation location, ZmanCalculationMethod method)
-        {
-            double dip = AppDipDegrees(location.ElevationMeters);
-            DateTime? netz = sun.Event(AstronomicalCalculator.SunriseZenith + dip, rising: true);
-            DateTime? shkia = sun.Event(AstronomicalCalculator.SunriseZenith + dip, rising: false);
-
-            DateTime? alot;
-            DateTime? tzeit;
-            if (method == ZmanCalculationMethod.Mga72Zmaniyos)
-            {
-                // KosherJava GetAlos72Zmanis/GetTzais72Zmanis: 1.2 שעות זמניות
-                // (גר"א, ברמת פני הים) לפני הנץ ואחרי השקיעה.
-                DateTime? seaSunrise = sun.Event(AstronomicalCalculator.SunriseZenith, rising: true);
-                DateTime? seaSunset = sun.Event(AstronomicalCalculator.SunriseZenith, rising: false);
-                double? seaHour = ShaahZmanit(seaSunrise, seaSunset);
-                alot = seaHour is null ? null : seaSunrise!.Value.AddMinutes(-1.2 * seaHour.Value);
-                tzeit = seaHour is null ? null : seaSunset!.Value.AddMinutes(1.2 * seaHour.Value);
-            }
-            else
-            {
-                alot = sun.Degrees(16.1, rising: true);
-                tzeit = sun.Degrees(8.5, rising: false);
-            }
-
-            var result = new MethodTimes { CandleLightingSunset = shkia };
-            Dictionary<string, DateTime?> t = result.Times;
-
-            t[ZmanimCalendar.NameAlotHaShachar] = alot;
-            t[ZmanimCalendar.NameMisheyakir] = sun.Degrees(11.5, rising: true);
-            t[ZmanimCalendar.NameNetz] = netz;
-            t[ZmanimCalendar.NameShkia] = shkia;
-            t[ZmanimCalendar.NameTzeitHakochavim] = tzeit;
-            t[ZmanimCalendar.NameTzeitShabbat] = sun.Degrees(8.5, rising: false);
-            t[ZmanimCalendar.NameRabbeinuTam] = shkia?.AddMinutes(72);
-
-            AddGraDay(t, netz, shkia, minchaGedolaAtLeastHalfHour: false);
-            AddMgaDay(t, alot, tzeit);
-            t[ZmanimCalendar.NamePelagHaMincha] = Hours(netz, shkia, 10.75);
-
-            return result;
         }
 
         private static MethodTimes ComputeOrHaChaim(SunCalculator sun, GeoLocation location)

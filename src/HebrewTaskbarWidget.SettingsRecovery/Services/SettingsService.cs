@@ -85,6 +85,7 @@ namespace HebrewTaskbarWidget.Services
                             }
                         }
 
+                        MigrateRemovedZmanMethods(loaded);
                         return loaded;
                     }
                 }
@@ -96,6 +97,26 @@ namespace HebrewTaskbarWidget.Services
             }
 
             return new AppSettings();
+        }
+
+        /// <summary>
+        /// השיטות "זווית שמש" ו-"72 דקות זמניות" הוסרו (נשארו רק הלוחות):
+        /// שיטה כללית ישנה עוברת ללוח אור החיים, דריסה לשיטה ישנה מתבטלת
+        /// (הזמן חוזר לשיטה הכללית), ושורה כפולה בשיטה ישנה נמחקת.
+        /// </summary>
+        internal static void MigrateRemovedZmanMethods(AppSettings settings)
+        {
+            settings.DefaultZmanCalculationMethod = ZmanimMethods.Normalize(settings.DefaultZmanCalculationMethod);
+
+            foreach (ZmanCustomization customization in settings.ZmanCustomizations ?? new())
+            {
+                if (customization.MethodOverride is ZmanCalculationMethod method && !ZmanimMethods.IsLuach(method))
+                {
+                    customization.MethodOverride = null;
+                }
+            }
+
+            settings.ZmanDuplicateRows?.RemoveAll(row => !ZmanimMethods.IsLuach(row.Method));
         }
 
         /// <summary>שומר את ההגדרות הנוכחיות לדיסק ומפעיל את אירוע השינוי.</summary>

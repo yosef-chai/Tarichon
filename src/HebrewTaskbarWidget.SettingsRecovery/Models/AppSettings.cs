@@ -248,31 +248,20 @@ namespace HebrewTaskbarWidget.Models
     }
 
     /// <summary>
-    /// שיטת חישוב הזמנים. שתי הראשונות קובעות רק את עלות השחר וצאת הכוכבים
-    /// (ואת הזמנים התלויים בהם). שתי האחרונות משחזרות לוח שלם, כל זמן לפי
-    /// ההגדרה של אותו לוח - ראו Services/ZmanimMethods.cs. אף אחת מהן אינה
-    /// פסק הלכה. הסדר קבוע: האינדקס משמש ישירות בתיבות הבחירה.
+    /// שיטת חישוב הזמנים: לוח אור החיים או לוח עתים לבינה, כל זמן לפי ההגדרה
+    /// של אותו לוח - ראו Services/ZmanimMethods.cs. אף אחת מהן אינה פסק הלכה.
     /// </summary>
     public enum ZmanCalculationMethod
     {
         /// <summary>
-        /// ברירת המחדל ההיסטורית של התוכנה: עלות השחר/צאת הכוכבים לפי זווית
-        /// שקיעת החמה מתחת לאופק (16.1°/8.5° בהתאמה, גישה גיאומטרית-אסטרונומית
-        /// טהורה).
+        /// שיטה ישנה (זווית שמש 16.1°/8.5°) שהוסרה. נשארה רק כדי שהגדרות
+        /// ישנות ייקראו, ומחושבת כמו <see cref="OrHaChaim"/>.
         /// </summary>
         Gra,
 
         /// <summary>
-        /// מבוסס על ספריית KosherJava Zmanim (חישוב זמני היום בהלכה, מאת
-        /// אליהו הרשפלד) - דרך ה-port ל-.NET של Yitzchok/Zmanim (LGPL 2.1,
-        /// https://github.com/Yitzchok/Zmanim). עלות השחר/צאת הכוכבים
-        /// מחושבים לפי "72 דקות זמניות" (גר"א/בעל התניא) - לא 72 דקות שעון
-        /// קבועות, אלא 1.2 שעות זמניות (יחסיות לאורך היום בפועל) לפני
-        /// הנץ/אחרי השקיעה (ברמת פני הים). הנוסחה המדוייקת מ-KosherJava:
-        /// Alos72 = SeaLevelSunrise − (ShaahZmanisGra × 1.2), כאשר
-        /// ShaahZmanisGra = (SeaLevelSunset − SeaLevelSunrise) ÷ 12 - ראו
-        /// ComplexZmanimCalendar.GetAlos72 בספריית המקור. Tzais72 המקביל
-        /// (סימטרי): SeaLevelSunset + (ShaahZmanisGra × 1.2).
+        /// שיטה ישנה (72 דקות זמניות) שהוסרה. נשארה רק כדי שהגדרות ישנות
+        /// ייקראו, ומחושבת כמו <see cref="OrHaChaim"/>.
         /// </summary>
         Mga72Zmaniyos,
 
@@ -441,15 +430,14 @@ namespace HebrewTaskbarWidget.Models
         public int? TzeitHakochavimMinutesAfterSunset { get; set; }
 
         /// <summary>
-        /// שיטת החישוב הכללית לעלות השחר/צאת הכוכבים (ולזמנים התלויים בהם -
-        /// סוף זמן ק"ש/תפילה מג"א) - ראו ZmanCalculationMethod למעלה.
+        /// שיטת החישוב הכללית: לוח אור החיים או לוח עתים לבינה - ראו
+        /// ZmanCalculationMethod למעלה.
         /// </summary>
-        public ZmanCalculationMethod DefaultZmanCalculationMethod { get; set; } = ZmanCalculationMethod.Gra;
+        public ZmanCalculationMethod DefaultZmanCalculationMethod { get; set; } = ZmanCalculationMethod.OrHaChaim;
 
         /// <summary>
-        /// true = כשנבחר לוח (אור החיים/עתים לבינה), הדלקת הנרות לפי מנהג העיר
-        /// באותו לוח (כמה דקות, ומאיזו שקיעה). false, או בשיטות האחרות =
-        /// CandleLightingMinutesBeforeSunset.
+        /// true = הדלקת הנרות לפי מנהג העיר בלוח שנבחר (כמה דקות, ומאיזו
+        /// שקיעה). false = CandleLightingMinutesBeforeSunset.
         /// </summary>
         public bool CandleLightingByLuach { get; set; } = true;
 
@@ -474,9 +462,18 @@ namespace HebrewTaskbarWidget.Models
         /// </summary>
         public List<string>? VisibleZmanNames { get; set; }
 
-        /// <summary>האם זמן נתון (לפי שמו הקנוני) מוגדר להצגה - כברירת מחדל (VisibleZmanNames == null) כולם מוצגים.</summary>
-        /// <summary>האם זמן נתון (לפי ה-Key הקנוני שלו - ראו ZmanEntry.Key) מוגדר להצגה - כברירת מחדל (VisibleZmanNames == null) כולם מוצגים. שורות "זמן כפול" (ZmanDuplicateRows) נשלטות בדיוק כמו כל שורה אחרת, לפי ה-Id הייחודי שלהן.</summary>
-        public bool IsZmanVisible(string zmanKey) => VisibleZmanNames is null || VisibleZmanNames.Contains(zmanKey);
+        /// <summary>
+        /// האם זמן נתון (לפי ה-Key הקנוני שלו - ראו ZmanEntry.Key) מוגדר להצגה -
+        /// כברירת מחדל (VisibleZmanNames == null) כולם מוצגים. שורות "זמן כפול"
+        /// (ZmanDuplicateRows) נשלטות בדיוק כמו כל שורה אחרת, לפי ה-Id הייחודי
+        /// שלהן. זמני החמץ מוצגים תמיד (רק בערב פסח), ורבנו תם מוצג יחד עם צאת
+        /// השבת והחג - ראו ZmanimCalendar.VisibilityKey.
+        /// </summary>
+        public bool IsZmanVisible(string zmanKey)
+        {
+            string? key = Services.ZmanimCalendar.VisibilityKey(zmanKey);
+            return key is null || VisibleZmanNames is null || VisibleZmanNames.Contains(key);
+        }
 
         // --- תאריך ושעה (ראו Services/AppTimeService) ---
         /// <summary>אם מופעל, "עכשיו" בכל האפליקציה נלקח מהתאריך/שעה הידניים למטה (עם המשך זרימת זמן טבעית מרגע ההגדרה) ולא מהתאריך/שעה של המחשב.</summary>

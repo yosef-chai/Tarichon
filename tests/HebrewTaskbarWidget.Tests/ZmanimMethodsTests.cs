@@ -26,9 +26,18 @@ public class ZmanimMethodsTests
         Name = "תל אביב - יפו", LatitudeDegrees = 32.0853, LongitudeDegrees = 34.7818, ElevationMeters = 60, TimeZoneId = "Israel Standard Time",
     };
 
-    private static Dictionary<string, DateTime?> Raw(ZmanCalculationMethod method, DateTime date, GeoLocation location) =>
-        ZmanimCalendar.Calculate(date, location, new ZmanimOptions { Method = method, RoundLechumra = false }, forceIncludeConditional: true)
+    // כל הזמנים של השיטה, כולל אלה שמופיעים רק בימים מסוימים (חמץ, רבנו תם).
+    private static Dictionary<string, DateTime?> Raw(ZmanCalculationMethod method, DateTime date, GeoLocation location)
+    {
+        var day = ZmanimCalendar.Calculate(date, location, new ZmanimOptions { Method = method, RoundLechumra = false }, forSettingsList: true)
             .ToDictionary(e => e.Key, e => e.Time);
+        foreach (var (name, time) in ZmanimMethods.Compute(method, date, location, ZmanimCalendar.ResolveTimeZone(location.TimeZoneId)).Times)
+        {
+            day.TryAdd(name, time);
+        }
+
+        return day;
+    }
 
     private static void AssertNear(string expected, DateTime? actual, string zman, double toleranceMinutes = 1.0)
     {
@@ -81,7 +90,7 @@ public class ZmanimMethodsTests
     public void OrHaChaim_Jerusalem_MatchesPublishedLuach(int y, int m, int d, string alot, string tzeit, string shmaMga, string shmaGra, string tefilaGra)
     {
         var options = new ZmanimOptions { Method = ZmanCalculationMethod.OrHaChaim };
-        var day = ZmanimCalendar.Calculate(new DateTime(y, m, d), Jerusalem, options, forceIncludeConditional: true)
+        var day = ZmanimCalendar.Calculate(new DateTime(y, m, d), Jerusalem, options, forSettingsList: true)
             .ToDictionary(e => e.Key, e => e.Time);
 
         // הלוח מעגל לחומרא, כמו התוכנה; הנץ והשקיעה שלו מהנקודה הגבוהה בעיר,
@@ -101,7 +110,7 @@ public class ZmanimMethodsTests
     public void OrHaChaim_TelAviv_MatchesPublishedLuach(int y, int m, int d, string alot, string tzeit, string shmaMga, string shmaGra, string tefilaGra)
     {
         var options = new ZmanimOptions { Method = ZmanCalculationMethod.OrHaChaim };
-        var day = ZmanimCalendar.Calculate(new DateTime(y, m, d), TelAviv, options, forceIncludeConditional: true)
+        var day = ZmanimCalendar.Calculate(new DateTime(y, m, d), TelAviv, options, forSettingsList: true)
             .ToDictionary(e => e.Key, e => e.Time);
 
         AssertNear(alot, day[ZmanimCalendar.NameAlotHaShachar], "עלות השחר");
@@ -173,20 +182,72 @@ public class ZmanimMethodsTests
         var options = new ZmanimOptions { Method = ZmanCalculationMethod.OrHaChaim };
         List<string> Keys(DateTime date) => ZmanimCalendar.Calculate(date, Jerusalem, options).Select(e => e.Key).ToList();
 
-        // יום שלישי רגיל: בלי חמץ, בלי הדלקת נרות ובלי צאת שבת.
+        // יום שלישי רגיל: בלי חמץ, בלי הדלקת נרות, בלי צאת שבת ובלי רבנו תם.
         List<string> weekday = Keys(new DateTime(2026, 10, 6));
         Assert.DoesNotContain(ZmanimCalendar.NameSofZmanAchilatChametz, weekday);
         Assert.DoesNotContain(ZmanimCalendar.NameCandleLighting, weekday);
         Assert.DoesNotContain(ZmanimCalendar.NameTzeitShabbat, weekday);
+        Assert.DoesNotContain(ZmanimCalendar.NameRabbeinuTam, weekday);
         Assert.Contains(ZmanimCalendar.NameMisheyakir, weekday);
 
         Assert.Contains(ZmanimCalendar.NameCandleLighting, Keys(new DateTime(2026, 10, 9)));
-        Assert.Contains(ZmanimCalendar.NameTzeitShabbat, Keys(new DateTime(2026, 10, 10)));
+        Assert.DoesNotContain(ZmanimCalendar.NameRabbeinuTam, Keys(new DateTime(2026, 10, 9)));
+
+        List<string> motzaeiShabbat = Keys(new DateTime(2026, 10, 10));
+        Assert.Contains(ZmanimCalendar.NameTzeitShabbat, motzaeiShabbat);
+        Assert.Contains(ZmanimCalendar.NameRabbeinuTam, motzaeiShabbat);
 
         // ערב פסח תשפ"ז: י"ד ניסן = 21.4.2027.
         List<string> erevPesach = Keys(new DateTime(2027, 4, 21));
         Assert.Contains(ZmanimCalendar.NameSofZmanAchilatChametz, erevPesach);
         Assert.Contains(ZmanimCalendar.NameSofZmanBiurChametz, erevPesach);
+    }
+
+    [Fact]
+    public void AutomaticZmanim_NotInSettingsLists_AndFollowTheirDays()
+    {
+        var options = new ZmanimOptions { Method = ZmanCalculationMethod.OrHaChaim };
+
+        // ברשימות שבהגדרות אין חמץ ורבנו תם, גם בערב פסח ובמוצאי שבת.
+        foreach (DateTime date in new[] { new DateTime(2027, 4, 21), new DateTime(2026, 10, 10) })
+        {
+            List<string> settingsList = ZmanimCalendar.Calculate(date, Jerusalem, options, forSettingsList: true).Select(e => e.Key).ToList();
+            Assert.DoesNotContain(ZmanimCalendar.NameSofZmanAchilatChametz, settingsList);
+            Assert.DoesNotContain(ZmanimCalendar.NameSofZmanBiurChametz, settingsList);
+            Assert.DoesNotContain(ZmanimCalendar.NameRabbeinuTam, settingsList);
+            Assert.Contains(ZmanimCalendar.NameTzeitShabbat, settingsList);
+        }
+
+        // זמני החמץ מוצגים תמיד; רבנו תם לפי צאת השבת והחג.
+        var settings = new AppSettings { VisibleZmanNames = new List<string> { ZmanimCalendar.NameNetz } };
+        Assert.True(settings.IsZmanVisible(ZmanimCalendar.NameSofZmanAchilatChametz));
+        Assert.True(settings.IsZmanVisible(ZmanimCalendar.NameSofZmanBiurChametz));
+        Assert.False(settings.IsZmanVisible(ZmanimCalendar.NameRabbeinuTam));
+
+        settings.VisibleZmanNames.Add(ZmanimCalendar.NameTzeitShabbat);
+        Assert.True(settings.IsZmanVisible(ZmanimCalendar.NameRabbeinuTam));
+    }
+
+    [Fact]
+    public void RemovedMethods_MigrateToTheLuachot()
+    {
+        var settings = new AppSettings { DefaultZmanCalculationMethod = ZmanCalculationMethod.Gra };
+        settings.ZmanCustomizations.Add(new ZmanCustomization { BaseZmanName = ZmanimCalendar.NameNetz, CustomName = "נץ", MethodOverride = ZmanCalculationMethod.Mga72Zmaniyos });
+        settings.ZmanCustomizations.Add(new ZmanCustomization { BaseZmanName = ZmanimCalendar.NameShkia, MethodOverride = ZmanCalculationMethod.ItimLeBina });
+        settings.ZmanDuplicateRows.Add(new ZmanDuplicateRow { BaseZmanName = ZmanimCalendar.NameAlotHaShachar, CustomName = "ישן", Method = ZmanCalculationMethod.Gra });
+        settings.ZmanDuplicateRows.Add(new ZmanDuplicateRow { BaseZmanName = ZmanimCalendar.NameChatzot, CustomName = "עתים", Method = ZmanCalculationMethod.ItimLeBina });
+
+        SettingsService.MigrateRemovedZmanMethods(settings);
+
+        Assert.Equal(ZmanCalculationMethod.OrHaChaim, settings.DefaultZmanCalculationMethod);
+        Assert.Null(settings.ZmanCustomizations[0].MethodOverride);
+        Assert.Equal("נץ", settings.ZmanCustomizations[0].CustomName);
+        Assert.Equal(ZmanCalculationMethod.ItimLeBina, settings.ZmanCustomizations[1].MethodOverride);
+        Assert.Equal("עתים", Assert.Single(settings.ZmanDuplicateRows).CustomName);
+
+        // ובכל מקרה, שיטה ישנה מחושבת כמו אור החיים.
+        Assert.Equal(Raw(ZmanCalculationMethod.OrHaChaim, new DateTime(2026, 10, 6), Jerusalem), Raw(ZmanCalculationMethod.Gra, new DateTime(2026, 10, 6), Jerusalem));
+        Assert.Equal(new[] { ZmanCalculationMethod.OrHaChaim, ZmanCalculationMethod.ItimLeBina }, ZmanimMethods.All);
     }
 
     [Fact]
@@ -216,7 +277,7 @@ public class ZmanimMethodsTests
     {
         var options = new ZmanimOptions
         {
-            Method = ZmanCalculationMethod.Gra,
+            Method = ZmanCalculationMethod.OrHaChaim,
             RoundLechumra = false,
             DuplicateRows = new[] { new ZmanDuplicateRow { Id = "dup", BaseZmanName = ZmanimCalendar.NameAlotHaShachar, CustomName = "עה\"ש (עתים לבינה)", Method = ZmanCalculationMethod.ItimLeBina } },
         };
@@ -224,6 +285,6 @@ public class ZmanimMethodsTests
         var entries = ZmanimCalendar.Calculate(new DateTime(2026, 10, 6), JerusalemKikarHaShabbat, options).ToDictionary(e => e.Key, e => e.Time);
         var itim = Raw(ZmanCalculationMethod.ItimLeBina, new DateTime(2026, 10, 6), JerusalemKikarHaShabbat);
         Assert.Equal(itim[ZmanimCalendar.NameAlotHaShachar], entries["dup"]);
-        Assert.True(entries["dup"] < entries[ZmanimCalendar.NameAlotHaShachar]); // 19.8° לפני 16.1°
+        Assert.True(entries["dup"] < entries[ZmanimCalendar.NameAlotHaShachar]); // 90 דקות במעלות לפני 72 דקות זמניות
     }
 }

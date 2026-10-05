@@ -101,7 +101,15 @@ namespace HebrewTaskbarWidget.Services
                 return;
             }
 
-            Interop.NativeMethods.ShowWindow(clockWnd, hidden ? Interop.NativeMethods.SW_HIDE : Interop.NativeMethods.SW_SHOW);
+            // נקרא כל שנייה וחצי - פונים ל-Explorer רק אם המצב באמת שונה, ובלי
+            // להמתין לו: ShowWindow רגיל על חלון של Explorer חוסם עד ש-Explorer
+            // מתפנה, וכשהוא עסוק זה תוקע את הוידג'ט (ראו TaskbarZOrderGuard).
+            if (Interop.NativeMethods.IsWindowVisible(clockWnd) == !hidden)
+            {
+                return;
+            }
+
+            Interop.NativeMethods.ShowWindowAsync(clockWnd, hidden ? Interop.NativeMethods.SW_HIDE : Interop.NativeMethods.SW_SHOW);
         }
 
         /// <summary>

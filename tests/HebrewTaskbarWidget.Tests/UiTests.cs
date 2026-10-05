@@ -513,9 +513,9 @@ public class UiTests
                 Layout(root);
                 UiTestHost.Snapshot(root, "zman-edit-dialog-duplicate");
 
-                // השיטה הכללית ועוד ארבע שיטות; לשורה הכפולה - ארבע השיטות.
-                Assert.Equal(5, dialog.MethodComboBox.Items.Count);
-                Assert.Equal(4, dialog.DuplicateMethodComboBox.Items.Count);
+                // השיטה הכללית ושני הלוחות; לשורה הכפולה - שני הלוחות.
+                Assert.Equal(3, dialog.MethodComboBox.Items.Count);
+                Assert.Equal(2, dialog.DuplicateMethodComboBox.Items.Count);
                 Assert.Equal(ZmanimMethods.All.ToList().IndexOf(ZmanCalculationMethod.ItimLeBina), dialog.DuplicateMethodComboBox.SelectedIndex);
 
                 // אי אפשר לבחור לשורה הכפולה את השיטה של השורה הראשית.

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using System.Windows.Automation;
 using HebrewTaskbarWidget.Interop;
 
@@ -155,18 +156,154 @@ namespace HebrewTaskbarWidget.Services
                    centerY <= taskbar.Bottom + TolerancePhysicalPixels;
         }
 
+        // --- UI Automation ברקע ---
+        //
+        // UI Automation מול שורת המשימות היא קריאה בין-תהליכית ל-Explorer.
+        // חיפוש הכפתור בכל עץ שורת המשימות לוקח 15-25 מ"ש גם כשהמחשב פנוי,
+        // והרבה יותר בדיוק כש-Explorer עסוק (פתיחת תפריט התחל, תוכנה שנפתחת).
+        // כשזה רץ על תהליכון הממשק כל חצי שנייה, הוידג'ט נתקע באותם רגעים -
+        // ושורת המשימות נשארה מעליו (אחת הסיבות להיעלמות שלו).
+        //
+        // עכשיו המדידה רצה בתהליכון רקע משלה: הכפתור נמצא פעם אחת, ואחר כך רק
+        // המלבן שלו נקרא מחדש (פחות ממילישנייה). תהליכון הממשק לוקח את התוצאה
+        // האחרונה מיד, בלי להמתין ל-Explorer.
+
+        private static readonly object UiaSync = new();
+        private static readonly AutoResetEvent UiaWake = new(false);
+        private static readonly ManualResetEventSlim UiaFreshResult = new(false);
+        private static readonly TimeSpan UiaRefreshInterval = TimeSpan.FromMilliseconds(400);
+        private static readonly TimeSpan UiaIdleAfter = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan UiaFirstResultWait = TimeSpan.FromSeconds(1);
+
+        private static Thread? _uiaThread;
+        private static long _uiaLastDemandTicks;
+        private static RECT? _uiaChevronRect;
+        private static IntPtr _uiaChevronTray;
+
         private static bool TryLocateChevronViaUIAutomation(out RECT chevronRect)
         {
             chevronRect = default;
 
-            try
+            IntPtr trayWnd = NativeMethods.FindWindow("Shell_TrayWnd", null);
+            if (trayWnd == IntPtr.Zero)
             {
-                IntPtr trayWnd = NativeMethods.FindWindow("Shell_TrayWnd", null);
-                if (trayWnd == IntPtr.Zero)
+                return false;
+            }
+
+            long now = DateTime.UtcNow.Ticks;
+            long previousDemand = Interlocked.Exchange(ref _uiaLastDemandTicks, now);
+            lock (UiaSync)
+            {
+                if (_uiaThread is null)
                 {
-                    return false;
+                    _uiaThread = new Thread(UiaLoop) { IsBackground = true, Name = "Taskbar UI Automation" };
+                    _uiaThread.SetApartmentState(ApartmentState.MTA);
+                    _uiaThread.Start();
+                }
+                else if (now - previousDemand >= UiaIdleAfter.Ticks)
+                {
+                    UiaWake.Set();
+                }
+            }
+
+            // רק בפעם הראשונה (או אחרי הפסקה) ממתינים לתוצאה - עד שנייה.
+            if (!UiaFreshResult.IsSet)
+            {
+                UiaFreshResult.Wait(UiaFirstResultWait);
+            }
+
+            lock (UiaSync)
+            {
+                if (_uiaChevronRect is RECT rect && _uiaChevronTray == trayWnd)
+                {
+                    chevronRect = rect;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void UiaLoop()
+        {
+            AutomationElement? cachedChevron = null;
+            IntPtr cachedTray = IntPtr.Zero;
+
+            while (true)
+            {
+                bool active = DateTime.UtcNow.Ticks - Interlocked.Read(ref _uiaLastDemandTicks) < UiaIdleAfter.Ticks;
+                if (!active)
+                {
+                    // אף אחד לא מבקש את המיקום (מצב מיקום אחר) - התוצאה תתיישן, אז מוחקים אותה.
+                    lock (UiaSync)
+                    {
+                        _uiaChevronRect = null;
+                        UiaFreshResult.Reset();
+                    }
+
+                    UiaWake.WaitOne();
+                    continue;
                 }
 
+                IntPtr trayWnd = NativeMethods.FindWindow("Shell_TrayWnd", null);
+                if (trayWnd != cachedTray)
+                {
+                    cachedChevron = null;
+                    cachedTray = trayWnd;
+                }
+
+                bool completed = false;
+                RECT? found = null;
+                if (trayWnd != IntPtr.Zero)
+                {
+                    completed = TryFindChevronRect(trayWnd, ref cachedChevron, out found);
+                }
+
+                lock (UiaSync)
+                {
+                    // חיפוש שנכשל באמצע (Explorer עסוק או עלה מחדש) לא מוחק את המיקום הקודם.
+                    if (completed || _uiaChevronTray != trayWnd)
+                    {
+                        _uiaChevronRect = found;
+                        _uiaChevronTray = trayWnd;
+                    }
+
+                    UiaFreshResult.Set();
+                }
+
+                UiaWake.WaitOne(UiaRefreshInterval);
+            }
+        }
+
+        /// <summary>
+        /// מאתר את כפתור "הצג סמלים מוסתרים" ב-UI Automation. מחזיר false אם
+        /// החיפוש נכשל באמצע, ו-true עם rect = null אם הסתיים ולא נמצא כפתור.
+        /// </summary>
+        private static bool TryFindChevronRect(IntPtr trayWnd, ref AutomationElement? cachedChevron, out RECT? rect)
+        {
+            rect = null;
+
+            if (cachedChevron is not null)
+            {
+                try
+                {
+                    System.Windows.Rect bounds = cachedChevron.Current.BoundingRectangle;
+                    if (!bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0)
+                    {
+                        rect = ToRect(bounds);
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // הכפתור הוסר (למשל Explorer עלה מחדש) - מחפשים מחדש.
+                }
+
+                cachedChevron = null;
+            }
+
+            try
+            {
                 AutomationElement? trayElement = AutomationElement.FromHandle(trayWnd);
                 if (trayElement is null)
                 {
@@ -180,6 +317,7 @@ namespace HebrewTaskbarWidget.Services
                 {
                     string name;
                     string automationId;
+                    System.Windows.Rect bounds;
 
                     try
                     {
@@ -191,22 +329,11 @@ namespace HebrewTaskbarWidget.Services
                         continue; // אלמנט שהתפרק/הוסר בדיוק ברגע הבדיקה - מדלגים
                     }
 
-                    // שמות אפשריים לכפתור "הצג סמלים מוסתרים" - אנגלית, עברית
-                    // (כמה ניסוחים אפשריים בתרגום), ו-AutomationId ידועים.
-                    bool looksLikeChevron =
-                        name.IndexOf("hidden icon", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        name.IndexOf("מוסתר", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        name.IndexOf("נסתר", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        automationId.Equals("SystemTrayIcon", StringComparison.OrdinalIgnoreCase) ||
-                        automationId.IndexOf("Overflow", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        automationId.IndexOf("Chevron", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                    if (!looksLikeChevron)
+                    if (!LooksLikeChevron(name, automationId))
                     {
                         continue;
                     }
 
-                    System.Windows.Rect bounds;
                     try
                     {
                         bounds = button.Current.BoundingRectangle;
@@ -221,24 +348,40 @@ namespace HebrewTaskbarWidget.Services
                         continue;
                     }
 
-                    chevronRect = new RECT
-                    {
-                        Left = (int)Math.Round(bounds.Left),
-                        Top = (int)Math.Round(bounds.Top),
-                        Right = (int)Math.Round(bounds.Right),
-                        Bottom = (int)Math.Round(bounds.Bottom),
-                    };
+                    cachedChevron = button;
+                    rect = ToRect(bounds);
                     return true;
                 }
+
+                return true;
             }
             catch
             {
-                // UI Automation עלולה להיכשל מכמה סיבות (תזמון, הרשאות, thread
-                // apartment state) - לא קריטי, נופלים חזרה לשיטת ה-Win32 הגולמית.
+                // UI Automation עלולה להיכשל מכמה סיבות (תזמון, Explorer עסוק או
+                // עולה מחדש) - לא קריטי, ננסה שוב בסבב הבא.
+                return false;
             }
-
-            return false;
         }
+
+        /// <summary>
+        /// שמות אפשריים לכפתור "הצג סמלים מוסתרים" - אנגלית, עברית (כמה
+        /// ניסוחים אפשריים בתרגום), ו-AutomationId ידועים.
+        /// </summary>
+        private static bool LooksLikeChevron(string name, string automationId) =>
+            name.IndexOf("hidden icon", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            name.IndexOf("מוסתר", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            name.IndexOf("נסתר", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            automationId.Equals("SystemTrayIcon", StringComparison.OrdinalIgnoreCase) ||
+            automationId.IndexOf("Overflow", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            automationId.IndexOf("Chevron", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        private static RECT ToRect(System.Windows.Rect bounds) => new()
+        {
+            Left = (int)Math.Round(bounds.Left),
+            Top = (int)Math.Round(bounds.Top),
+            Right = (int)Math.Round(bounds.Right),
+            Bottom = (int)Math.Round(bounds.Bottom),
+        };
 
         private static bool TryLocateChevronViaWin32(out RECT chevronRect)
         {
