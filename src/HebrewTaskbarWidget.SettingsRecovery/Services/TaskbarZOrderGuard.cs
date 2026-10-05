@@ -26,6 +26,13 @@ namespace HebrewTaskbarWidget.Services
     ///   הצפה של קריאות - הבעיה שבגללה ניסיון קודם עם אירועי מערכת (0.5.4)
     ///   הוסר.
     ///
+    /// תפריט ההתחל הוא מקרה אחר: כשהוא פתוח, Windows מעביר את שורת המשימות
+    /// ל"שכבה" (Band) של ה-Shell, שמצוירת מעל כל החלונות העליונים הרגילים.
+    /// לתוכנה רגילה אין דרך להיכנס לשכבה הזו, ולכן שום העלאה לא עוזרת - זו
+    /// הסיבה שהוידג'ט נעלם כל עוד התחל פתוח. אבל חלון שבבעלות (Owner) שורת
+    /// המשימות עובר איתה לשכבה, ותמיד נשאר מעליה - ראו <see cref="AttachToTaskbar"/>.
+    /// שאר המנגנון נשאר כרשת ביטחון (למשל אם Explorer עולה מחדש).
+    ///
     /// רץ על תהליכון הממשק של הוידג'ט: שינוי סדר השכבות של חלון מתבצע תמיד
     /// בתהליכון שיצר אותו, כך שאין טעם להריץ אותו במקום אחר.
     /// </summary>
@@ -49,6 +56,8 @@ namespace HebrewTaskbarWidget.Services
         private IntPtr _reorderHook;
         private IntPtr _explorerHook;
         private IntPtr _desktop;
+        private IntPtr _originalOwner;
+        private bool _originalOwnerSaved;
         private uint _explorerProcessId;
         private DateTime _burstUntilUtc;
         private DateTime _lastLogUtc;
@@ -100,6 +109,7 @@ namespace HebrewTaskbarWidget.Services
                 NativeMethods.EVENT_OBJECT_REORDER, NativeMethods.EVENT_OBJECT_REORDER,
                 IntPtr.Zero, _winEventProc, 0, 0, NativeMethods.WINEVENT_OUTOFCONTEXT);
 
+            AttachToTaskbar();
             HookExplorer();
             _timer.Start();
             EnsureAboveTaskbar();
@@ -108,8 +118,58 @@ namespace HebrewTaskbarWidget.Services
         /// <summary>Explorer עלה מחדש (הודעת TaskbarCreated) - שורת משימות חדשה, תהליך חדש.</summary>
         public void OnTaskbarRecreated()
         {
+            AttachToTaskbar();
             HookExplorer();
             BeginBurst();
+        }
+
+        /// <summary>
+        /// הופך את שורת המשימות לבעלים (Owner) של הוידג'ט. כך הוידג'ט:
+        /// - עובר יחד איתה לשכבת ה-Shell כשתפריט ההתחל או החיפוש פתוחים
+        ///   (נבדק: בלי בעלים הוידג'ט נשאר בשכבה הרגילה ומוסתר; עם בעלים הוא
+        ///   עובר לאותה שכבה). Windows מעביר חלונות בבעלות רק ברגע שהשכבה
+        ///   משתנה, ולכן הבעלות צריכה להיות קבועה ולא רק כשהתפריט נפתח.
+        /// - נשאר תמיד מעליה בסדר השכבות, בלי מאבק.
+        ///
+        /// בעלות בין תהליכים מחברת את תורי הקלט של שני התהליכונים, כך שתקיעה
+        /// של אחד הייתה תוקעת גם את הקלט של השני. מנתקים את החיבור מיד (נבדק:
+        /// המעבר בין השכבות ממשיך לעבוד גם אחרי הניתוק), ובודקים שוב מדי פעם.
+        /// כש-Explorer נסגר החלון שלנו לא נהרס - רק הבעלות מתאפסת (נבדק), והיא
+        /// מוחזרת לשורת המשימות החדשה.
+        /// </summary>
+        private void AttachToTaskbar()
+        {
+            IntPtr tray = NativeMethods.FindWindow("Shell_TrayWnd", null);
+            if (tray == IntPtr.Zero)
+            {
+                return;
+            }
+
+            IntPtr owner = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT);
+            if (!_originalOwnerSaved)
+            {
+                _originalOwner = owner;
+                _originalOwnerSaved = true;
+            }
+
+            if (owner != tray)
+            {
+                NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT, tray);
+                PositionDiagnosticsLogger.Log("הוידג'ט הוצמד לשורת המשימות (Owner)");
+            }
+
+            DetachInputFrom(tray);
+        }
+
+        private void DetachInputFrom(IntPtr window)
+        {
+            uint otherThread = NativeMethods.GetWindowThreadProcessId(window, out _);
+            uint ownThread = NativeMethods.GetWindowThreadProcessId(_hwnd, out _);
+            if (otherThread != 0 && otherThread != ownThread)
+            {
+                // מחזיר false אם לא היו מחוברים - אין נזק בקריאה חוזרת.
+                NativeMethods.AttachThreadInput(ownThread, otherThread, false);
+            }
         }
 
         /// <summary>
@@ -124,6 +184,15 @@ namespace HebrewTaskbarWidget.Services
             }
 
             bool lostTopmost = (NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE) & NativeMethods.WS_EX_TOPMOST) == 0;
+
+            // כשתוכנה במסך מלא (סרט, משחק) פעילה, Explorer מוריד את שורת המשימות
+            // מ"עליון", והוידג'ט שבבעלותה יורד איתה (נבדק). שם הוא צריך להישאר -
+            // מוסתר מאחורי המסך המלא כמו שורת המשימות, ולא לצוף מעליו.
+            if (lostTopmost && IsOwnedByNonTopmostTaskbar())
+            {
+                return false;
+            }
+
             if (!lostTopmost && !IsTaskbarAbove())
             {
                 return false;
@@ -160,6 +229,14 @@ namespace HebrewTaskbarWidget.Services
             }
 
             return true;
+        }
+
+        private bool IsOwnedByNonTopmostTaskbar()
+        {
+            IntPtr owner = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT);
+            return owner != IntPtr.Zero &&
+                   owner == NativeMethods.FindWindow("Shell_TrayWnd", null) &&
+                   (NativeMethods.GetWindowLong(owner, NativeMethods.GWL_EXSTYLE) & NativeMethods.WS_EX_TOPMOST) == 0;
         }
 
         /// <summary>האם שורת המשימות הראשית נמצאת מעל הוידג'ט בסדר השכבות.</summary>
@@ -220,6 +297,9 @@ namespace HebrewTaskbarWidget.Services
 
         private void OnTimerTick()
         {
+            // Explorer עלול לעלות מחדש גם בלי שהודעת TaskbarCreated הגיעה אלינו -
+            // הבעלות מתאפסת אז, ומחזירים אותה כאן (בדיקה זולה).
+            AttachToTaskbar();
             EnsureAboveTaskbar();
 
             if (_timer.Interval == BurstInterval && DateTime.UtcNow > _burstUntilUtc)
@@ -229,7 +309,6 @@ namespace HebrewTaskbarWidget.Services
 
             if (_timer.Interval == IdleInterval)
             {
-                // Explorer עלול לעלות מחדש גם בלי שהודעת TaskbarCreated הגיעה אלינו.
                 HookExplorer();
             }
         }
@@ -276,6 +355,16 @@ namespace HebrewTaskbarWidget.Services
 
             _disposed = true;
             _timer.Stop();
+
+            if (_originalOwnerSaved)
+            {
+                IntPtr tray = NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT);
+                NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_HWNDPARENT, _originalOwner);
+                if (tray != IntPtr.Zero && tray != _originalOwner)
+                {
+                    DetachInputFrom(tray);
+                }
+            }
 
             if (_foregroundHook != IntPtr.Zero)
             {

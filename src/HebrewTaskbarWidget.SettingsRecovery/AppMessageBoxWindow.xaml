@@ -38,8 +38,8 @@
                                TextAlignment="Center" TextWrapping="Wrap" />
                 </StackPanel>
 
-                <!-- במצב "גלילה גדולה" (מה חדש) מקבל MaxHeight בקוד והופך לאזור גלילה.
-                     בכוונה TextBlock עם Inlines ולא FlowDocument, ששובר יישור RTL. -->
+                <!-- במצב "גלילה גדולה" (מה חדש) מקבל MaxHeight בקוד, והתוכן מוחלף
+                     ב-Markdown המעוצב של הערות השחרור (MarkdownRenderer). -->
                 <ScrollViewer x:Name="MessageScrollViewer" Margin="0,14,0,0"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <TextBlock x:Name="MessageTextBlock" TextWrapping="Wrap" TextAlignment="Center" FontSize="12.5" LineHeight="19"

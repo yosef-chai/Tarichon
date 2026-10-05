@@ -198,6 +198,24 @@ namespace HebrewTaskbarWidget.Interop
         [DllImport("user32.dll")]
         public static extern IntPtr GetDesktopWindow();
 
+        // --- חלון "בבעלות" שורת המשימות (ראו TaskbarZOrderGuard.AttachToTaskbar) ---
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+        public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+        public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        /// <summary>החלון הבעלים (Owner) של חלון ראשי.</summary>
+        public const int GWLP_HWNDPARENT = -8;
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, [MarshalAs(UnmanagedType.Bool)] bool fAttach);
+
+        [DllImport("kernel32.dll")]
+        public static extern uint GetCurrentThreadId();
+
         public delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint idEventThread, uint dwmsEventTime);
 
         [DllImport("user32.dll")]

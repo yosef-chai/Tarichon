@@ -61,27 +61,17 @@ namespace HebrewTaskbarWidget
                 // ScrollViewer סביב הטקסט מקבל MaxHeight כדי שרק הוא (לא כל
                 // החלונית) יגלול את המשך התוכן שלא נכנס.
                 //
-                // הערה חשובה על הבחירה ב-TextBlock פשוט (לא FlowDocument):
-                // בגרסה 0.5.0 (הגרסה הראשונה שבה נוספה חלונית "מה חדש")
-                // הטקסט הוצג ביישור RTL תקין ב-MessageTextBlock פשוט הזה
-                // בדיוק (TextAlignment="Center", ירושת FlowDirection מה-
-                // Window בלבד, בלי שום תוספת). ניסיון מאוחר יותר לשפר את
-                // העיצוב (כותרות/תבליטים מסודרים) עבר ל-FlowDocumentScrollViewer
-                // - ואז יישור ה-RTL "התקלקל", למרות כמה ניסיונות תיקון שונים
-                // (TextAlignment, Language, RLM marks) שלא עזרו. לכן כאן
-                // חוזרים במפורש למנגנון המקורי המוכח - TextBlock פשוט - ובונים
-                // בו תוכן מסודר (כותרות מודגשות, תבליטים) ידנית דרך Inlines
-                // (ראו PopulateReleaseNotesInlines), במקום FlowDocument -
-                // כדי לשמר גם את הנראות המשופרת וגם את יישור ה-RTL התקין.
+                // התוכן הוא Markdown של GitHub (הערות השחרור), ומוצג בעיצוב מלא,
+                // כל בלוק בכיוון של השפה שלו - ראו MarkdownRenderer.
                 SizeToContent = SizeToContent.Width;
                 Height = LargeModeHeight;
                 RootBorder.Width = LargeModeWidth;
                 RootBorder.MaxWidth = LargeModeWidth;
                 MessageScrollViewer.MaxHeight = LargeModeScrollMaxHeight;
 
-                MessageTextBlock.TextAlignment = TextAlignment.Right;
-                MessageTextBlock.SetResourceReference(TextBlock.ForegroundProperty, "PrimaryForegroundBrush");
-                PopulateReleaseNotesInlines(MessageTextBlock, text);
+                FrameworkElement notes = MarkdownRenderer.Render(text);
+                notes.Margin = new Thickness(0, 0, 10, 0); // מרווח מפס הגלילה (משמאל, בחלון מימין לשמאל)
+                MessageScrollViewer.Content = notes;
             }
             else
             {
@@ -90,76 +80,6 @@ namespace HebrewTaskbarWidget
 
             BuildButtons(button, extraButtonText);
             ApplyTheme(SettingsService.Current.SettingsPanelDarkMode);
-        }
-
-        /// <summary>
-        /// בונה תוכן מסודר (כותרות מודגשות בצבע הדגשה, תבליטים עם "•") מתוך
-        /// טקסט Markdown גולמי כפי שמגיע מ-GitHub Releases, ישירות לתוך
-        /// Inlines של TextBlock פשוט - ראו הערה מפורטת למה זה בכוונה לא
-        /// FlowDocument (בקונסטרוקטור למעלה). מגבלה ידועה ומקובלת: שורת
-        /// תבליט שנעטפת לשורה נוספת לא מקבלת הזחה תלויה (TextBlock פשוט לא
-        /// תומך בזה כלל) - פשרה סבירה בהחלט לטובת יישור RTL תקין ומוכח.
-        /// </summary>
-        private static void PopulateReleaseNotesInlines(TextBlock target, string rawText)
-        {
-            target.Inlines.Clear();
-
-            string[] lines = rawText.Replace("\r\n", "\n").Split('\n');
-            bool isFirstLine = true;
-            bool previousWasBlank = false;
-
-            foreach (string rawLine in lines)
-            {
-                string line = rawLine.TrimEnd();
-                string trimmedStart = line.TrimStart();
-
-                if (trimmedStart.Length == 0)
-                {
-                    previousWasBlank = true;
-                    continue;
-                }
-
-                if (!isFirstLine)
-                {
-                    target.Inlines.Add(new LineBreak());
-                    if (previousWasBlank)
-                    {
-                        target.Inlines.Add(new LineBreak());
-                    }
-                }
-
-                // כותרות Markdown ("#", "##", "###" ...)
-                int hashCount = 0;
-                while (hashCount < trimmedStart.Length && trimmedStart[hashCount] == '#')
-                {
-                    hashCount++;
-                }
-
-                if (hashCount > 0 && hashCount < trimmedStart.Length && trimmedStart[hashCount] == ' ')
-                {
-                    string headingText = trimmedStart.Substring(hashCount + 1).Trim();
-                    var heading = new Run(headingText)
-                    {
-                        FontWeight = FontWeights.Bold,
-                        FontSize = hashCount <= 2 ? 14.5 : 13,
-                    };
-                    heading.SetResourceReference(TextElement.ForegroundProperty, "AccentForegroundBrush");
-                    target.Inlines.Add(heading);
-                }
-                else if (trimmedStart.StartsWith("- ", StringComparison.Ordinal) ||
-                         trimmedStart.StartsWith("* ", StringComparison.Ordinal))
-                {
-                    string bulletText = trimmedStart.Substring(2).Trim();
-                    target.Inlines.Add(new Run("• " + bulletText));
-                }
-                else
-                {
-                    target.Inlines.Add(new Run(trimmedStart));
-                }
-
-                isFirstLine = false;
-                previousWasBlank = false;
-            }
         }
 
         /// <summary>
