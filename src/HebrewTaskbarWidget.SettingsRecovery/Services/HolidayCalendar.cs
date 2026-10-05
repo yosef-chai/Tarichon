@@ -437,7 +437,7 @@ namespace HebrewTaskbarWidget.Services
                 add(HebrewCalendarMath.SaturdayOnOrBefore(lastDayBefore),
                     new("Shabbat Mevarchim", $"שבת מברכים חודש {HebrewCalendarMath.MonthName(year, month)}", HolidayCategory.ShabbatMevarchim));
 
-                // לא נוהגים יום כיפור קטן לפני חשון (אחרי החגים), טבת (חנוכה) ואייר (ניסן). שישי ושבת מוקדמים לחמישי.
+                // יום כיפור קטן הוא מנהג אשכנז. לא נוהגים אותו לפני חשון (אחרי החגים), טבת (חנוכה) ואייר (ניסן). שישי ושבת מוקדמים לחמישי.
                 if (month is not (HebrewMonth.Cheshvan or HebrewMonth.Tevet or HebrewMonth.Iyar))
                 {
                     DateTime yomKippurKatan = lastDayBefore.DayOfWeek switch
@@ -446,7 +446,7 @@ namespace HebrewTaskbarWidget.Services
                         DayOfWeek.Saturday => lastDayBefore.AddDays(-2),
                         _ => lastDayBefore,
                     };
-                    add(yomKippurKatan, new("Yom Kippur Katan", "יום כיפור קטן", HolidayCategory.YomKippurKatan));
+                    add(yomKippurKatan, new("Yom Kippur Katan", "יום כיפור קטן", HolidayCategory.YomKippurKatan, Minhag: CommunityMinhag.Ashkenaz));
                 }
 
                 previous = month;

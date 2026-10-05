@@ -28,7 +28,7 @@ namespace HebrewTaskbarWidget.Models
         LeilSelichot,
     }
 
-    /// <summary>מנהג הקהילה - קובע מועדים שתלויים במנהג.</summary>
+    /// <summary>המנהג ההלכתי - קובע מועדים שתלויים במנהג (סליחות, יום כיפור קטן, בה"ב, מימונה).</summary>
     public enum CommunityMinhag
     {
         Ashkenaz,
@@ -125,7 +125,7 @@ namespace HebrewTaskbarWidget.Models
             _ => true,
         };
 
-        /// <summary>האם להציג את המועד - לפי הקטגוריה ולפי מנהג הקהילה שנבחר.</summary>
+        /// <summary>האם להציג את המועד - לפי הקטגוריה ולפי המנהג ההלכתי שנבחר.</summary>
         public bool IsVisible(HolidayEvent holiday) =>
             IsVisible(holiday.Category) && (holiday.Minhag is null || holiday.Minhag == Minhag);
     }

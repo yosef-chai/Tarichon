@@ -17,14 +17,46 @@ namespace HebrewTaskbarWidget.Services
         public const double GeometricZenith = 90.0;
 
         /// <summary>
+        /// השבירה האטמוספרית הממוצעת באופק (34 דקות קשת) ועוד חצי קוטר השמש
+        /// (16 דקות קשת) - 50 דקות קשת בסך הכל. כך מקובל ב-NOAA, ב-KosherJava
+        /// ובשני הלוחות (אור החיים ועתים לבינה): הזריחה/השקיעה הן הרגע שבו
+        /// השפה העליונה של השמש נראית באופק, כשמרכזה עוד 0.8333° מתחתיו.
+        /// </summary>
+        public const double RefractionAndSemidiameterDegrees = 50.0 / 60.0;
+
+        /// <summary>זנית הזריחה/השקיעה הנראות ברמת פני הים (90.8333°).</summary>
+        public const double SunriseZenith = GeometricZenith + RefractionAndSemidiameterDegrees;
+
+        /// <summary>רדיוס כדור הארץ בקילומטרים, כמו ב-KosherJava (לחישוב שקיעת האופק מגובה).</summary>
+        private const double EarthRadiusKm = 6356.9;
+
+        /// <summary>
+        /// שקיעת האופק (Dip) במעלות לצופה בגובה נתון - גיאומטרית, בלי שבירה
+        /// קרקעית: acos(R / (R + h)). זו הנוסחה של KosherJava, והיא משחזרת את
+        /// השקיעה "מהגובה" של לוח עתים לבינה בירושלים בדיוק של שניות.
+        /// </summary>
+        public static double GeometricHorizonDipDegrees(double elevationMeters)
+        {
+            if (elevationMeters <= 0)
+            {
+                return 0;
+            }
+
+            return RadiansToDegrees(Math.Acos(EarthRadiusKm / (EarthRadiusKm + elevationMeters / 1000.0)));
+        }
+
+        /// <summary>
         /// מחשב את שעת החציה של השמש בזווית נתונה (זנית) ביום מסויים, עבור מיקום
         /// גיאוגרפי נתון. מחזיר null אם השמש אינה חוצה את הזווית ביום זה (למשל
         /// באזורים קוטביים בקיץ/חורף - לא רלוונטי לישראל אך נשמר לשלמות הפתרון).
+        ///
+        /// החישוב איטרטיבי: נטיית השמש ומשוואת הזמן מחושבות מחדש לרגע האירוע
+        /// עצמו (ולא לחצות), עד להתכנסות. כך הדיוק כשנייה-שתיים, במקום כחצי דקה.
         /// </summary>
         /// <param name="date">התאריך (משמש רק לצורך היום הקלנדרי, בשעון מקומי).</param>
         /// <param name="latitude">קו רוחב במעלות (חיובי = צפון).</param>
         /// <param name="longitude">קו אורך במעלות (חיובי = מזרח).</param>
-        /// <param name="zenithDegrees">הזווית ממנה מחושב הזמן (90 = אופק גיאומטרי).</param>
+        /// <param name="zenithDegrees">זווית מרכז השמש מהזנית (90 = אופק גיאומטרי, ראו <see cref="SunriseZenith"/>).</param>
         /// <param name="isSunrise">true לזריחה (חצי מזרחי), false לשקיעה (חצי מערבי).</param>
         /// <param name="timeZone">אזור הזמן להצגת התוצאה.</param>
         public static DateTime? CalculateSunEvent(
@@ -35,48 +67,66 @@ namespace HebrewTaskbarWidget.Services
             bool isSunrise,
             TimeZoneInfo timeZone)
         {
-            double julianDay = ToJulianDay(date.Year, date.Month, date.Day);
-            double utcOffsetHours = timeZone.GetUtcOffset(date).TotalHours;
+            double julianDayAtUtcMidnight = ToJulianDay(date.Year, date.Month, date.Day);
 
-            double? minutesUtc = CalculateSunEventUtcMinutes(julianDay, latitude, longitude, zenithDegrees, isSunrise);
-            if (minutesUtc is null)
+            // ניחוש ראשון: הצהריים המקומיים (לפי קו האורך) של אותו יום, ב-UTC.
+            double utcMinutes = 720.0 - 4.0 * longitude;
+
+            for (int i = 0; i < 6; i++)
             {
-                return null;
+                double t = JulianCentury(julianDayAtUtcMidnight + utcMinutes / 1440.0);
+                double hourAngle = HourAngleMagnitudeDegrees(latitude, SunDeclinationDegrees(t), zenithDegrees);
+                if (double.IsNaN(hourAngle))
+                {
+                    return null; // השמש לא מגיעה לזווית הזו ביום זה במיקום זה
+                }
+
+                // צהרי חמה (Solar Noon) ב-UTC, ואז זריחה = לפניו, שקיעה = אחריו,
+                // במרחק של זווית השעה (מומרת לדקות: 4 דקות למעלה).
+                double solarNoonUtcMinutes = 720.0 - 4.0 * longitude - EquationOfTimeMinutes(t);
+                double next = isSunrise
+                    ? solarNoonUtcMinutes - 4.0 * hourAngle
+                    : solarNoonUtcMinutes + 4.0 * hourAngle;
+
+                bool converged = Math.Abs(next - utcMinutes) < 0.0005;
+                utcMinutes = next;
+                if (converged)
+                {
+                    break;
+                }
             }
 
-            double localMinutes = minutesUtc.Value + utcOffsetHours * 60.0;
-
-            // נירמול לטווח היום (יכול "לגלוש" ליום שלפני/אחרי ליד חצות באזורי זמן קיצוניים)
-            DateTime midnight = date.Date;
-            return midnight.AddMinutes(localMinutes);
+            return ToLocal(date, utcMinutes, timeZone);
         }
 
-        private static double? CalculateSunEventUtcMinutes(
-            double julianDay,
-            double latitude,
-            double longitude,
-            double zenithDegrees,
-            bool isSunrise)
+        /// <summary>
+        /// חצות היום האמיתי (מעבר השמש במרידיאן) - לפי משוואת הזמן ברגע המעבר
+        /// עצמו. לא תלוי בקו הרוחב או בגובה.
+        /// </summary>
+        public static DateTime SolarTransit(DateTime date, double longitude, TimeZoneInfo timeZone)
         {
-            double t = JulianCentury(julianDay);
+            double julianDayAtUtcMidnight = ToJulianDay(date.Year, date.Month, date.Day);
+            double utcMinutes = 720.0 - 4.0 * longitude;
 
-            double eqTime = EquationOfTimeMinutes(t);
-            double solarDec = SunDeclinationDegrees(t);
-
-            double hourAngleMagnitude = HourAngleMagnitudeDegrees(latitude, solarDec, zenithDegrees);
-            if (double.IsNaN(hourAngleMagnitude))
+            for (int i = 0; i < 3; i++)
             {
-                return null; // השמש לא מגיעה לזווית הזו ביום זה במיקום זה
+                double t = JulianCentury(julianDayAtUtcMidnight + utcMinutes / 1440.0);
+                utcMinutes = 720.0 - 4.0 * longitude - EquationOfTimeMinutes(t);
             }
 
-            // צהרי חמה (Solar Noon) ב-UTC, ואז זריחה = לפניו, שקיעה = אחריו,
-            // במרחק של זווית השעה (מומרת לדקות: 4 דקות למעלה).
-            double solarNoonUtcMinutes = 720.0 - 4.0 * longitude - eqTime;
-            double timeUtcMinutes = isSunrise
-                ? solarNoonUtcMinutes - 4.0 * hourAngleMagnitude
-                : solarNoonUtcMinutes + 4.0 * hourAngleMagnitude;
+            return ToLocal(date, utcMinutes, timeZone);
+        }
 
-            return timeUtcMinutes;
+        /// <summary>
+        /// ממיר "דקות UTC מחצות של היום הקלנדרי" לשעון המקומי - לפי היסט אזור
+        /// הזמן ברגע עצמו (ולא בחצות), כך שגם ביום המעבר לשעון קיץ/חורף
+        /// התוצאה נכונה.
+        /// </summary>
+        private static DateTime ToLocal(DateTime date, double utcMinutes, TimeZoneInfo timeZone)
+        {
+            DateTime utc = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc).AddMinutes(utcMinutes);
+            DateTime local = TimeZoneInfo.ConvertTimeFromUtc(utc, timeZone);
+            return DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
         }
 
         private static double ToJulianDay(int year, int month, int day)
@@ -190,7 +240,7 @@ namespace HebrewTaskbarWidget.Services
             double cosHourAngle = (Math.Cos(zenithRad) - Math.Sin(latRad) * Math.Sin(decRad))
                                  / (Math.Cos(latRad) * Math.Cos(decRad));
 
-            if (cosHourAngle < -1.0 || cosHourAngle > 1.0)
+            if (double.IsNaN(cosHourAngle) || cosHourAngle < -1.0 || cosHourAngle > 1.0)
             {
                 return double.NaN;
             }

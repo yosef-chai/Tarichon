@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -12,7 +13,7 @@ namespace HebrewTaskbarWidget
     /// ברשימת "אילו זמנים להציג" (לשונית "מיקום וזמנים"). מאפשרת: שם מותאם
     /// אישית, דריסת שיטת חישוב (לזמנים "רגילים"), הגדרות מיוחדות ל"הדלקת
     /// נרות"/"צאת הכוכבים", והוספת/הסרת "שורת זמן כפולה" (אותו זמן פעם
-    /// נוספת, בשיטת החישוב השנייה - ראו AppSettings.ZmanDuplicateRow). שתי
+    /// נוספת, בשיטת חישוב אחרת - ראו AppSettings.ZmanDuplicateRow). שתי
     /// השורות (הראשית והכפולה, כשיש) מוצגות בסימטריה - לכל אחת סמליל מחיקה
     /// משלה; מחיקת אחת מהן משאירה את השנייה כתצורה החדשה, היחידה, של הזמן.
     ///
@@ -29,9 +30,16 @@ namespace HebrewTaskbarWidget
 
         private ZmanDuplicateRow? _duplicate;
 
+        /// <summary>כמה דקות מדליקים לפי הלוח שנבחר כשיטה הכללית, או null אם השיטה הכללית אינה לוח.</summary>
+        private readonly int? _luachCandleLightingMinutes;
+
+        /// <summary>השם שמוצג כשאין שם מותאם אישית - שמירה בלי לשנותו אינה יוצרת שם מותאם.</summary>
+        private readonly string _defaultDisplayName;
+
         public string? ResultCustomName { get; private set; }
         public ZmanCalculationMethod? ResultMethodOverride { get; private set; }
         public int ResultCandleLightingMinutes { get; private set; }
+        public bool ResultCandleLightingByLuach { get; private set; }
         public int? ResultTzeitMinutesOverride { get; private set; }
         public ZmanDuplicateRow? ResultDuplicateRow { get; private set; }
 
@@ -40,6 +48,8 @@ namespace HebrewTaskbarWidget
             string? currentCustomName,
             ZmanCalculationMethod? currentMethodOverride,
             int currentCandleLightingMinutes,
+            bool currentCandleLightingByLuach,
+            int? luachCandleLightingMinutes,
             int? currentTzeitMinutesOverride,
             ZmanDuplicateRow? existingDuplicate,
             ZmanCalculationMethod globalDefaultMethod,
@@ -56,6 +66,7 @@ namespace HebrewTaskbarWidget
             _isTzeit = baseZmanName == ZmanimCalendar.NameTzeitHakochavim;
             _globalDefaultMethod = globalDefaultMethod;
             _computeTimeForMethod = computeTimeForMethod;
+            _luachCandleLightingMinutes = luachCandleLightingMinutes;
             _duplicate = existingDuplicate is null ? null : new ZmanDuplicateRow
             {
                 Id = existingDuplicate.Id,
@@ -64,9 +75,11 @@ namespace HebrewTaskbarWidget
                 Method = existingDuplicate.Method,
             };
 
-            string displayNameForTitle = string.IsNullOrWhiteSpace(currentCustomName) ? baseZmanName : currentCustomName!;
+            // בלי שם מותאם מוצג השם שמתאים לשיטה (בלי "16.1°" בלוח אור החיים, למשל).
+            _defaultDisplayName = ZmanimCalendar.GetSettingsDisplayName(baseZmanName, currentMethodOverride ?? globalDefaultMethod);
+            string displayNameForTitle = string.IsNullOrWhiteSpace(currentCustomName) ? _defaultDisplayName : currentCustomName!;
             TitleText.Text = $"עריכת \"{displayNameForTitle}\"";
-            CustomNameTextBox.Text = currentCustomName ?? baseZmanName;
+            CustomNameTextBox.Text = currentCustomName ?? _defaultDisplayName;
 
             if (_isCandleLighting)
             {
@@ -77,18 +90,33 @@ namespace HebrewTaskbarWidget
                 PrimaryDeleteButton.Visibility = Visibility.Collapsed;
                 CandleLightingMinutesPanel.Visibility = Visibility.Visible;
                 CandleLightingMinutesTextBox.Text = currentCandleLightingMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                // האפשרות "לפי הלוח" רלוונטית רק כשהשיטה הכללית היא לוח.
+                bool luachSelected = luachCandleLightingMinutes is not null;
+                CandleLightingByLuachCheckBox.Visibility = luachSelected ? Visibility.Visible : Visibility.Collapsed;
+                CandleLightingByLuachText.Visibility = luachSelected ? Visibility.Visible : Visibility.Collapsed;
+                CandleLightingByLuachText.Text = luachSelected
+                    ? $"ב{ZmanimMethods.Label(globalDefaultMethod)} מדליקים כאן {luachCandleLightingMinutes} דקות לפני השקיעה."
+                    : string.Empty;
+                CandleLightingByLuachCheckBox.IsChecked = currentCandleLightingByLuach;
+                UpdateCandleLightingManualPanel();
                 PrimaryTimeText.Text = FormatTimeOrDash(_computeTimeForMethod(_globalDefaultMethod));
             }
             else
             {
                 CandleLightingMinutesPanel.Visibility = Visibility.Collapsed;
                 MethodPanel.Visibility = Visibility.Visible;
-                MethodComboBox.SelectedIndex = currentMethodOverride switch
+
+                MethodComboBox.Items.Add(new ComboBoxItem { Content = $"השיטה הכללית ({ZmanimMethods.Label(globalDefaultMethod)})" });
+                foreach (ZmanCalculationMethod method in ZmanimMethods.All)
                 {
-                    null => 0,
-                    ZmanCalculationMethod.Gra => 1,
-                    _ => 2,
-                };
+                    MethodComboBox.Items.Add(new ComboBoxItem { Content = ZmanimMethods.Label(method) });
+                    DuplicateMethodComboBox.Items.Add(new ComboBoxItem { Content = ZmanimMethods.Label(method) });
+                }
+
+                MethodComboBox.SelectedIndex = currentMethodOverride is ZmanCalculationMethod overrideMethod
+                    ? 1 + IndexOfMethod(overrideMethod)
+                    : 0;
 
                 TzeitMinutesPanel.Visibility = _isTzeit ? Visibility.Visible : Visibility.Collapsed;
                 if (_isTzeit)
@@ -103,19 +131,39 @@ namespace HebrewTaskbarWidget
         private static string FormatTimeOrDash(DateTime? time) =>
             "זמן נוכחי: " + (time.HasValue ? AppTimeService.FormatZmanTime(time.Value) : "—");
 
-        /// <summary>מתרגם בחירת ComboBox (0=כללי, 1=גר"א, 2=KosherJava) לשיטה אפקטיבית בפועל (לצורך "השיטה השנייה" של כפילה, ולצורך תצוגת הזמן הנוכחי).</summary>
+        private static int IndexOfMethod(ZmanCalculationMethod method) =>
+            Math.Max(0, ZmanimMethods.All.ToList().IndexOf(method));
+
+        /// <summary>מתרגם את הבחירה ב-MethodComboBox (0 = השיטה הכללית, אחריה כל השיטות לפי הסדר) לשיטה בפועל.</summary>
         private ZmanCalculationMethod EffectivePrimaryMethod()
         {
-            return MethodComboBox.SelectedIndex switch
-            {
-                1 => ZmanCalculationMethod.Gra,
-                2 => ZmanCalculationMethod.Mga72Zmaniyos,
-                _ => _globalDefaultMethod,
-            };
+            int index = MethodComboBox.SelectedIndex - 1;
+            return index >= 0 && index < ZmanimMethods.All.Count ? ZmanimMethods.All[index] : _globalDefaultMethod;
         }
 
-        private static string MethodLabel(ZmanCalculationMethod method) =>
-            method == ZmanCalculationMethod.Gra ? "רגילה (זווית שמש)" : "72 דקות זמניות";
+        /// <summary>השיטה שמוצעת לשורה כפולה: הראשונה ברשימה שאינה השיטה של השורה הראשית.</summary>
+        private static ZmanCalculationMethod FirstOtherMethod(ZmanCalculationMethod primary)
+        {
+            foreach (ZmanCalculationMethod method in ZmanimMethods.All)
+            {
+                if (method != primary)
+                {
+                    return method;
+                }
+            }
+
+            return primary;
+        }
+
+        private static string MethodLabel(ZmanCalculationMethod method) => ZmanimMethods.Label(method);
+
+        private void UpdateCandleLightingManualPanel()
+        {
+            bool byLuach = _luachCandleLightingMinutes is not null && CandleLightingByLuachCheckBox.IsChecked == true;
+            CandleLightingManualPanel.IsEnabled = !byLuach;
+        }
+
+        private void CandleLightingByLuachCheckBox_CheckedChanged(object sender, RoutedEventArgs e) => UpdateCandleLightingManualPanel();
 
         // מונע מ-DuplicateToggle_CheckedChanged להגיב לעדכון התכנותי של
         // DuplicateToggle.IsChecked בתוך RefreshDuplicateUi עצמה - כדי לא
@@ -143,18 +191,22 @@ namespace HebrewTaskbarWidget
             if (hasDuplicate)
             {
                 DuplicateNameTextBox.Text = _duplicate!.CustomName;
-                DuplicateMethodText.Text = "שיטת חישוב: " + MethodLabel(_duplicate.Method);
+                _suppressDuplicateMethodEvent = true;
+                DuplicateMethodComboBox.SelectedIndex = IndexOfMethod(_duplicate.Method);
+                _suppressDuplicateMethodEvent = false;
                 DuplicateTimeText.Text = FormatTimeOrDash(_computeTimeForMethod(_duplicate.Method));
             }
         }
 
-        /// <summary>קובעת אוטומטית שהכפילה תמיד תהיה בשיטה השונה מהשורה הראשית - לא ניתן לבחור זאת ידנית (כדי שלא ייווצר מצב של שני זמנים כפולים זהים).</summary>
+        /// <summary>אם השורה הראשית עוברת לשיטה של הכפולה, הכפולה עוברת לשיטה אחרת - כדי שלא יהיו שתי שורות זהות.</summary>
         private void MethodComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_duplicate is not null)
+            if (_duplicate is not null && _duplicate.Method == EffectivePrimaryMethod())
             {
-                ZmanCalculationMethod primary = EffectivePrimaryMethod();
-                _duplicate.Method = primary == ZmanCalculationMethod.Gra ? ZmanCalculationMethod.Mga72Zmaniyos : ZmanCalculationMethod.Gra;
+                _duplicate.Method = FirstOtherMethod(EffectivePrimaryMethod());
+                _suppressDuplicateMethodEvent = true;
+                DuplicateMethodComboBox.SelectedIndex = IndexOfMethod(_duplicate.Method);
+                _suppressDuplicateMethodEvent = false;
             }
 
             // גם בלי כפילה, מעדכנים את תצוגת הזמן הראשית - היא רלוונטית תמיד
@@ -164,10 +216,45 @@ namespace HebrewTaskbarWidget
 
             if (_duplicate is not null)
             {
-                DuplicateMethodText.Text = "שיטת חישוב: " + MethodLabel(_duplicate.Method);
                 DuplicateTimeText.Text = FormatTimeOrDash(_computeTimeForMethod(_duplicate.Method));
                 PrimaryMethodText.Text = "שיטת חישוב: " + MethodLabel(EffectivePrimaryMethod());
             }
+        }
+
+        private bool _suppressDuplicateMethodEvent;
+
+        /// <summary>בחירת שיטה לשורה הכפולה. שיטה זהה לזו של השורה הראשית נדחית (חוזרים לבחירה הקודמת).</summary>
+        private void DuplicateMethodComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressDuplicateMethodEvent || _duplicate is null || DuplicateMethodComboBox.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            ZmanCalculationMethod selected = ZmanimMethods.All[DuplicateMethodComboBox.SelectedIndex];
+            if (selected == EffectivePrimaryMethod())
+            {
+                _suppressDuplicateMethodEvent = true;
+                DuplicateMethodComboBox.SelectedIndex = IndexOfMethod(_duplicate.Method);
+                _suppressDuplicateMethodEvent = false;
+                return;
+            }
+
+            // שם שהוצע אוטומטית מתעדכן לשיטה החדשה; שם שהמשתמש כתב נשאר.
+            string oldSuggestion = SuggestedDuplicateName(_duplicate.Method);
+            _duplicate.Method = selected;
+            if (DuplicateNameTextBox.Text.Trim() == oldSuggestion)
+            {
+                DuplicateNameTextBox.Text = SuggestedDuplicateName(selected);
+            }
+
+            DuplicateTimeText.Text = FormatTimeOrDash(_computeTimeForMethod(selected));
+        }
+
+        private string SuggestedDuplicateName(ZmanCalculationMethod method)
+        {
+            string baseDisplayName = string.IsNullOrWhiteSpace(CustomNameTextBox.Text) ? _baseZmanName : CustomNameTextBox.Text.Trim();
+            return $"{ZmanimCalendar.GetPopupDisplayName(baseDisplayName)} ({ZmanimMethods.ShortLabel(method)})";
         }
 
         /// <summary>הפעלת/כיבוי המתג "הוסף שורת זמן כפולה" - ראו הערה מפורטת ב-AppSettings.ZmanDuplicateRow.</summary>
@@ -180,18 +267,12 @@ namespace HebrewTaskbarWidget
 
             if (DuplicateToggle.IsChecked == true)
             {
-                ZmanCalculationMethod primary = EffectivePrimaryMethod();
-                ZmanCalculationMethod otherMethod = primary == ZmanCalculationMethod.Gra ? ZmanCalculationMethod.Mga72Zmaniyos : ZmanCalculationMethod.Gra;
-
-                string baseDisplayName = string.IsNullOrWhiteSpace(CustomNameTextBox.Text) ? _baseZmanName : CustomNameTextBox.Text.Trim();
-                string suggestedName = otherMethod == ZmanCalculationMethod.Gra
-                    ? $"{baseDisplayName} (זווית שמש)"
-                    : $"{baseDisplayName} (72 דקות)";
+                ZmanCalculationMethod otherMethod = FirstOtherMethod(EffectivePrimaryMethod());
 
                 _duplicate = new ZmanDuplicateRow
                 {
                     BaseZmanName = _baseZmanName,
-                    CustomName = suggestedName,
+                    CustomName = SuggestedDuplicateName(otherMethod),
                     Method = otherMethod,
                 };
             }
@@ -224,29 +305,26 @@ namespace HebrewTaskbarWidget
             }
 
             CustomNameTextBox.Text = _duplicate.CustomName;
-            MethodComboBox.SelectedIndex = _duplicate.Method == ZmanCalculationMethod.Gra ? 1 : 2;
+            ZmanCalculationMethod promotedMethod = _duplicate.Method;
             _duplicate = null;
+            MethodComboBox.SelectedIndex = 1 + IndexOfMethod(promotedMethod);
             RefreshDuplicateUi();
         }
 
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
             string customName = CustomNameTextBox.Text.Trim();
-            ResultCustomName = (string.IsNullOrWhiteSpace(customName) || customName == _baseZmanName) ? null : customName;
+            ResultCustomName = (string.IsNullOrWhiteSpace(customName) || customName == _baseZmanName || customName == _defaultDisplayName) ? null : customName;
 
             if (_isCandleLighting)
             {
                 int minutes = ParseClampedInt(CandleLightingMinutesTextBox.Text, fallback: 40, min: 0, max: 60);
                 ResultCandleLightingMinutes = minutes;
+                ResultCandleLightingByLuach = CandleLightingByLuachCheckBox.IsChecked == true;
             }
             else
             {
-                ResultMethodOverride = MethodComboBox.SelectedIndex switch
-                {
-                    1 => ZmanCalculationMethod.Gra,
-                    2 => ZmanCalculationMethod.Mga72Zmaniyos,
-                    _ => (ZmanCalculationMethod?)null,
-                };
+                ResultMethodOverride = MethodComboBox.SelectedIndex > 0 ? EffectivePrimaryMethod() : null;
 
                 if (_isTzeit)
                 {

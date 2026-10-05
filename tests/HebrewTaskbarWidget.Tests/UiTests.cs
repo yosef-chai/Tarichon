@@ -479,7 +479,7 @@ public class UiTests
         UiTestHost.Run(() =>
         {
             var dialog = new ZmanEditDialog(
-                ZmanimCalendar.NameTzeitHakochavim, null, null, 18, null, null,
+                ZmanimCalendar.NameTzeitHakochavim, null, null, 18, true, null, null, null,
                 default, _ => new DateTime(2026, 10, 5, 18, 32, 0));
             try
             {
@@ -494,6 +494,94 @@ public class UiTests
             finally
             {
                 dialog.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void ZmanEditDialog_DuplicateRowOffersAllOtherMethods()
+    {
+        UiTestHost.Run(() =>
+        {
+            var duplicate = new ZmanDuplicateRow { Id = "d", BaseZmanName = ZmanimCalendar.NameAlotHaShachar, CustomName = "עלות השחר (עתים לבינה)", Method = ZmanCalculationMethod.ItimLeBina };
+            var dialog = new ZmanEditDialog(
+                ZmanimCalendar.NameAlotHaShachar, null, null, 40, true, null, null, duplicate,
+                ZmanCalculationMethod.OrHaChaim, _ => new DateTime(2026, 10, 5, 5, 18, 0));
+            try
+            {
+                var root = (FrameworkElement)dialog.Content;
+                Layout(root);
+                UiTestHost.Snapshot(root, "zman-edit-dialog-duplicate");
+
+                // השיטה הכללית ועוד ארבע שיטות; לשורה הכפולה - ארבע השיטות.
+                Assert.Equal(5, dialog.MethodComboBox.Items.Count);
+                Assert.Equal(4, dialog.DuplicateMethodComboBox.Items.Count);
+                Assert.Equal(ZmanimMethods.All.ToList().IndexOf(ZmanCalculationMethod.ItimLeBina), dialog.DuplicateMethodComboBox.SelectedIndex);
+
+                // אי אפשר לבחור לשורה הכפולה את השיטה של השורה הראשית.
+                dialog.DuplicateMethodComboBox.SelectedIndex = ZmanimMethods.All.ToList().IndexOf(ZmanCalculationMethod.OrHaChaim);
+                Assert.Equal(ZmanimMethods.All.ToList().IndexOf(ZmanCalculationMethod.ItimLeBina), dialog.DuplicateMethodComboBox.SelectedIndex);
+            }
+            finally
+            {
+                dialog.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void ZmanEditDialog_CandleLightingByLuach()
+    {
+        UiTestHost.Run(() =>
+        {
+            var dialog = new ZmanEditDialog(
+                ZmanimCalendar.NameCandleLighting, null, null, 30, true, 40, null, null,
+                ZmanCalculationMethod.ItimLeBina, _ => new DateTime(2026, 10, 9, 17, 38, 0));
+            try
+            {
+                var root = (FrameworkElement)dialog.Content;
+                Layout(root);
+                UiTestHost.Snapshot(root, "zman-edit-dialog-candles");
+
+                Assert.Equal(Visibility.Visible, dialog.CandleLightingByLuachCheckBox.Visibility);
+                Assert.Contains("40", dialog.CandleLightingByLuachText.Text);
+                Assert.False(dialog.CandleLightingManualPanel.IsEnabled);
+
+                dialog.CandleLightingByLuachCheckBox.IsChecked = false;
+                Assert.True(dialog.CandleLightingManualPanel.IsEnabled);
+            }
+            finally
+            {
+                dialog.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SettingsWindow_ZmanimPage_ShowsLuachMethods()
+    {
+        var settings = new AppSettings { DefaultZmanCalculationMethod = ZmanCalculationMethod.OrHaChaim };
+        SettingsService.Save(settings);
+
+        UiTestHost.Run(() =>
+        {
+            var window = new SettingsWindow(2);
+            try
+            {
+                var root = (FrameworkElement)window.Content;
+                root.Measure(new Size(1000, 1400));
+                root.Arrange(new Rect(0, 0, 1000, 1400));
+                root.UpdateLayout();
+                UiTestHost.DoEvents();
+                UiTestHost.Snapshot(root, "settings-zmanim");
+
+                Assert.Equal(ZmanimMethods.All.Count, window.ZmanCalculationMethodComboBox.Items.Count);
+                Assert.Equal(ZmanimMethods.Description(ZmanCalculationMethod.OrHaChaim), window.ZmanCalculationMethodCard.Description);
+                Assert.True(window.RoundZmanimLechumraCheckBox.IsChecked);
+            }
+            finally
+            {
+                window.Close();
             }
         });
     }

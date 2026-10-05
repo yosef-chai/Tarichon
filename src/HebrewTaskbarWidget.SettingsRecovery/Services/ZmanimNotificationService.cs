@@ -76,11 +76,7 @@ namespace HebrewTaskbarWidget.Services
             GeoLocation location = SettingsService.BuildLocation();
             IReadOnlyList<ZmanEntry> todaysZmanim = ZmanimCalendar.Calculate(
                 today, location,
-                SettingsService.Current.CandleLightingMinutesBeforeSunset,
-                SettingsService.Current.TzeitHakochavimMinutesAfterSunset,
-                SettingsService.Current.DefaultZmanCalculationMethod,
-                SettingsService.Current.ZmanCustomizations,
-                SettingsService.Current.ZmanDuplicateRows);
+                ZmanimOptions.FromSettings(SettingsService.Current));
             DateTime now = AppTimeService.Now();
 
             // --- הרשימה הראשית: שורה אחת לכל זמן, ללא חזרות ---

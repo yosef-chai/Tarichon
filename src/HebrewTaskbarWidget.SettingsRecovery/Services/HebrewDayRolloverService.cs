@@ -35,11 +35,7 @@ namespace HebrewTaskbarWidget.Services
 
             IReadOnlyList<ZmanEntry> entries = ZmanimCalendar.Calculate(
                 today, location,
-                SettingsService.Current.CandleLightingMinutesBeforeSunset,
-                SettingsService.Current.TzeitHakochavimMinutesAfterSunset,
-                SettingsService.Current.DefaultZmanCalculationMethod,
-                SettingsService.Current.ZmanCustomizations,
-                SettingsService.Current.ZmanDuplicateRows);
+                ZmanimOptions.FromSettings(SettingsService.Current));
 
             string relevantZmanName = settings.HebrewDayChangeMode == HebrewDayChangeMode.AtTzeitHakochavim
                 ? ZmanimCalendar.NameTzeitHakochavim

@@ -422,11 +422,14 @@ namespace HebrewTaskbarWidget
                 : "פורים בי\"ד באדר.";
             PurimStatusText.Text = display.Purim == PurimObservanceMode.Auto ? $"לפי המיקום ({locationName}) - {purimText}" : purimText;
 
+            // אשכנז: ליל סליחות, תעניות בה"ב ויום כיפור קטן. עדות המזרח: סליחות מב' באלול ומימונה.
             bool ashkenaz = display.Minhag == CommunityMinhag.Ashkenaz;
+            SelichotCard.Header = ashkenaz ? "ליל סליחות" : "תחילת הסליחות מב' באלול";
             SelichotCard.Description = ashkenaz
-                ? "ליל סליחות: מוצאי השבת שלפני ראש השנה (לפחות ארבעה ימים לפניו)"
-                : "מב' באלול - הלילה שאחרי ראש חודש אלול";
+                ? "מוצאי השבת שלפני ראש השנה (לפחות ארבעה ימים לפניו) - מנהג אשכנז"
+                : "הלילה שאחרי ראש חודש אלול - מנהג עדות המזרח";
             BehabCard.Visibility = ashkenaz ? Visibility.Visible : Visibility.Collapsed;
+            YomKippurKatanCard.Visibility = ashkenaz ? Visibility.Visible : Visibility.Collapsed;
             CommunityCustomsCard.Visibility = ashkenaz ? Visibility.Collapsed : Visibility.Visible;
 
             DateTime today = AppTimeService.Today();

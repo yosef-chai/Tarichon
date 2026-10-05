@@ -248,9 +248,10 @@ namespace HebrewTaskbarWidget.Models
     }
 
     /// <summary>
-    /// שיטת חישוב הזמנים (עלות השחר/צאת הכוכבים, ולכן גם הזמנים המבוססים
-    /// עליהם - סוף זמן ק"ש/תפילה מג"א): שתי שיטות נפוצות ומקובלות, אינן
-    /// פוסקות הלכה למעשה.
+    /// שיטת חישוב הזמנים. שתי הראשונות קובעות רק את עלות השחר וצאת הכוכבים
+    /// (ואת הזמנים התלויים בהם). שתי האחרונות משחזרות לוח שלם, כל זמן לפי
+    /// ההגדרה של אותו לוח - ראו Services/ZmanimMethods.cs. אף אחת מהן אינה
+    /// פסק הלכה. הסדר קבוע: האינדקס משמש ישירות בתיבות הבחירה.
     /// </summary>
     public enum ZmanCalculationMethod
     {
@@ -274,6 +275,22 @@ namespace HebrewTaskbarWidget.Models
         /// (סימטרי): SeaLevelSunset + (ShaahZmanisGra × 1.2).
         /// </summary>
         Mga72Zmaniyos,
+
+        /// <summary>
+        /// לוח אור החיים (ישיבת אור החיים, לפי הוראות הרב עובדיה יוסף): בלי
+        /// מעלות כלל. הכל בשעות זמניות של היום מהנץ עד השקיעה מהגובה - עלות
+        /// השחר 72 דקות זמניות, צאת הכוכבים 13.5 דקות זמניות, רבנו תם 72
+        /// דקות זמניות.
+        /// </summary>
+        OrHaChaim,
+
+        /// <summary>
+        /// לוח עתים לבינה (הרב דניאל גלויברמן): עלות השחר ויום המג"א לפי 90
+        /// דקות במעלות (72 בחו"ל), שעות זמניות מהנץ והשקיעה המישוריים, צאת
+        /// הכוכבים 18 דקות במעלות, צאת שבת 8.5°, והגדרות שקיעה והדלקת נרות לפי
+        /// עיר.
+        /// </summary>
+        ItimLeBina,
     }
 
     /// <summary>
@@ -428,6 +445,20 @@ namespace HebrewTaskbarWidget.Models
         /// סוף זמן ק"ש/תפילה מג"א) - ראו ZmanCalculationMethod למעלה.
         /// </summary>
         public ZmanCalculationMethod DefaultZmanCalculationMethod { get; set; } = ZmanCalculationMethod.Gra;
+
+        /// <summary>
+        /// true = כשנבחר לוח (אור החיים/עתים לבינה), הדלקת הנרות לפי מנהג העיר
+        /// באותו לוח (כמה דקות, ומאיזו שקיעה). false, או בשיטות האחרות =
+        /// CandleLightingMinutesBeforeSunset.
+        /// </summary>
+        public bool CandleLightingByLuach { get; set; } = true;
+
+        /// <summary>
+        /// true = עיגול כל זמן לדקה לחומרא, כמו בלוחות: זמן שהוא סוף (ק"ש,
+        /// תפילה, שקיעה) יורד לדקה שלמה, וזמן שהוא התחלה (הנץ, מנחה, צאת
+        /// הכוכבים) עולה לדקה הבאה. false = עיגול לדקה הקרובה.
+        /// </summary>
+        public bool RoundZmanimLechumra { get; set; } = true;
 
         /// <summary>התאמות אישיות (שם/שיטת חישוב) לזמנים בודדים - ראו ZmanCustomization.</summary>
         public List<ZmanCustomization> ZmanCustomizations { get; set; } = new();

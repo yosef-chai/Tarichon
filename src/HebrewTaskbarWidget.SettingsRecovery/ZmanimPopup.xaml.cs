@@ -256,11 +256,7 @@ namespace HebrewTaskbarWidget
 
             IReadOnlyList<ZmanEntry> zmanim = ZmanimCalendar.Calculate(
                     _selectedDate, _location,
-                    SettingsService.Current.CandleLightingMinutesBeforeSunset,
-                    SettingsService.Current.TzeitHakochavimMinutesAfterSunset,
-                    SettingsService.Current.DefaultZmanCalculationMethod,
-                    SettingsService.Current.ZmanCustomizations,
-                    SettingsService.Current.ZmanDuplicateRows)
+                    ZmanimOptions.FromSettings(SettingsService.Current))
                 .Where(z => SettingsService.Current.IsZmanVisible(z.Key))
                 .ToList();
 

@@ -49,17 +49,18 @@
                 <!-- לזמנים רגילים (לא הדלקת נרות) -->
                 <StackPanel x:Name="MethodPanel" Margin="0,14,0,0">
                     <TextBlock Text="שיטת חישוב" Style="{StaticResource FieldLabel}" />
-                    <ComboBox x:Name="MethodComboBox" HorizontalAlignment="Stretch" SelectionChanged="MethodComboBox_SelectionChanged">
-                        <ComboBoxItem Content="השיטה הכללית" />
-                        <ComboBoxItem Content="רגילה (זווית שמש)" />
-                        <ComboBoxItem Content="72 דקות זמניות" />
-                    </ComboBox>
+                    <ComboBox x:Name="MethodComboBox" HorizontalAlignment="Stretch" SelectionChanged="MethodComboBox_SelectionChanged" />
                 </StackPanel>
 
                 <!-- רק להדלקת נרות -->
-                <StackPanel x:Name="CandleLightingMinutesPanel" Orientation="Horizontal" Margin="0,14,0,0">
-                    <TextBlock Text="דקות לפני השקיעה" VerticalAlignment="Center" />
-                    <TextBox x:Name="CandleLightingMinutesTextBox" Width="52" Margin="10,0,0,0" MaxLength="2" TextAlignment="Center" />
+                <StackPanel x:Name="CandleLightingMinutesPanel" Margin="0,14,0,0">
+                    <CheckBox x:Name="CandleLightingByLuachCheckBox" Content="לפי מנהג העיר בלוח" Style="{StaticResource ToggleSwitchStyle}" HorizontalAlignment="Left"
+                              Checked="CandleLightingByLuachCheckBox_CheckedChanged" Unchecked="CandleLightingByLuachCheckBox_CheckedChanged" />
+                    <TextBlock x:Name="CandleLightingByLuachText" Style="{StaticResource DescriptionText}" Margin="0,4,0,10" TextWrapping="Wrap" />
+                    <StackPanel x:Name="CandleLightingManualPanel" Orientation="Horizontal">
+                        <TextBlock Text="דקות לפני השקיעה" VerticalAlignment="Center" />
+                        <TextBox x:Name="CandleLightingMinutesTextBox" Width="52" Margin="10,0,0,0" MaxLength="2" TextAlignment="Center" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- רק לצאת הכוכבים -->
@@ -89,7 +90,8 @@
                                     ToolTip="מחיקת השורה הכפולה" AutomationProperties.Name="מחיקת השורה הכפולה"
                                     Click="DeleteDuplicateButton_Click" />
                         </Grid>
-                        <TextBlock x:Name="DuplicateMethodText" Style="{StaticResource DescriptionText}" Margin="0,6,0,0" />
+                        <TextBlock Text="שיטת החישוב של השורה הכפולה" Style="{StaticResource FieldLabel}" Margin="0,10,0,0" />
+                        <ComboBox x:Name="DuplicateMethodComboBox" HorizontalAlignment="Stretch" SelectionChanged="DuplicateMethodComboBox_SelectionChanged" />
                         <TextBlock x:Name="DuplicateTimeText" Style="{StaticResource DescriptionText}" Margin="0,2,0,0" />
                     </StackPanel>
                 </StackPanel>

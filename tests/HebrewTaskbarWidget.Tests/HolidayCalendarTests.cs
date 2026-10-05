@@ -166,8 +166,8 @@ public class HolidayCalendarTests
     [Fact]
     public void MinhagDependentDays_FollowTheChosenMinhag()
     {
-        var ashkenaz = new HolidayOptions(true, false, new HolidaySettings { ShowLeilSelichot = true, ShowBehab = true, Minhag = CommunityMinhag.Ashkenaz });
-        var sephardi = new HolidayOptions(true, false, new HolidaySettings { ShowLeilSelichot = true, ShowBehab = true, Minhag = CommunityMinhag.Sephardi });
+        var ashkenaz = new HolidayOptions(true, false, new HolidaySettings { ShowLeilSelichot = true, ShowBehab = true, ShowYomKippurKatan = true, Minhag = CommunityMinhag.Ashkenaz });
+        var sephardi = new HolidayOptions(true, false, new HolidaySettings { ShowLeilSelichot = true, ShowBehab = true, ShowYomKippurKatan = true, Minhag = CommunityMinhag.Sephardi });
 
         // ה'תשפ"ז: ב' באלול = 4.9.2027, ליל סליחות אשכנז = 25.9.2027, אסרו חג פסח = 29.4.2027.
         DateTime elul2 = new(2027, 9, 4);
@@ -183,14 +183,22 @@ public class HolidayCalendarTests
 
         int behabAshkenaz = 0;
         int behabSephardi = 0;
+        int yomKippurKatanAshkenaz = 0;
+        int yomKippurKatanSephardi = 0;
         for (DateTime day = new(2026, 9, 12); day < new DateTime(2027, 10, 2); day = day.AddDays(1))
         {
             behabAshkenaz += HolidayCalendar.GetEvents(day, ashkenaz).Count(e => e.Key == "Behab");
             behabSephardi += HolidayCalendar.GetEvents(day, sephardi).Count(e => e.Key == "Behab");
+            yomKippurKatanAshkenaz += HolidayCalendar.GetEvents(day, ashkenaz).Count(e => e.Key == "Yom Kippur Katan");
+            yomKippurKatanSephardi += HolidayCalendar.GetEvents(day, sephardi).Count(e => e.Key == "Yom Kippur Katan");
         }
 
         Assert.Equal(6, behabAshkenaz);
         Assert.Equal(0, behabSephardi);
+
+        // יום כיפור קטן - מנהג אשכנז בלבד.
+        Assert.True(yomKippurKatanAshkenaz > 0);
+        Assert.Equal(0, yomKippurKatanSephardi);
     }
 
     [Fact]

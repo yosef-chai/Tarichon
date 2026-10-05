@@ -37,55 +37,84 @@ namespace HebrewTaskbarWidget.Services
     }
 
     /// <summary>
-    /// שכבת החישוב ההלכתי: בונה מתוך זריחה/שקיעה אסטרונומיות את רשימת זמני היום
-    /// המקובלים, לפי אותה מתודולוגיה שעליה מבוססת ספריית KosherJava - זריחה/שקיעה
-    /// "גיאומטריות" (ברמת פני הים) לצורך זמנים מבוססי-מעלות (עלות/צאת), וזריחה/
-    /// שקיעה "מותאמות גובה" (הנץ/שקיעה הנראים בפועל ממיקום המשתמש) לצורך שאר
-    /// הזמנים ולתצוגת הנץ/השקיעה עצמם.
-    ///
-    /// הערה: אלו הכרעות נפוצות ומקובלות רווחות (לדוגמה: עלות השחר ב-16.1 מעלות,
-    /// צאת הכוכבים ב-8.5 מעלות/13.5 דקות), אך אינן פוסקות הלכה למעשה. "צאת
-    /// הכוכבים" ניתן כעת להגדרה כדקות-אחרי-השקיעה בהגדרות ("מיקום וזמנים") -
-    /// ראו tzeitHakochavimMinutesAfterSunset למטה; שאר הזמנים עדיין קבועים.
-    ///
-    /// נוספה שיטת חישוב שנייה (ZmanCalculationMethod.Mga72Zmaniyos,
-    /// מבוססת KosherJava/Yitzchok-Zmanim) לצד השיטה המקורית (Gra) - ראו
-    /// AppSettings.DefaultZmanCalculationMethod ותיעוד ZmanCalculationMethod.
+    /// ההגדרות שמשפיעות על חישוב הזמנים. נבנות מההגדרות השמורות
+    /// (<see cref="FromSettings"/>), או מהערכים שבעריכה בחלון ההגדרות.
+    /// </summary>
+    public sealed record ZmanimOptions
+    {
+        public ZmanCalculationMethod Method { get; init; } = ZmanCalculationMethod.Gra;
+        public int CandleLightingMinutesBeforeSunset { get; init; } = 40;
+        public bool CandleLightingByLuach { get; init; } = true;
+        public int? TzeitHakochavimMinutesAfterSunset { get; init; }
+        public bool RoundLechumra { get; init; } = true;
+        public IReadOnlyList<ZmanCustomization> Customizations { get; init; } = Array.Empty<ZmanCustomization>();
+        public IReadOnlyList<ZmanDuplicateRow> DuplicateRows { get; init; } = Array.Empty<ZmanDuplicateRow>();
+
+        public static ZmanimOptions FromSettings(AppSettings settings) => new()
+        {
+            Method = settings.DefaultZmanCalculationMethod,
+            CandleLightingMinutesBeforeSunset = settings.CandleLightingMinutesBeforeSunset,
+            CandleLightingByLuach = settings.CandleLightingByLuach,
+            TzeitHakochavimMinutesAfterSunset = settings.TzeitHakochavimMinutesAfterSunset,
+            RoundLechumra = settings.RoundZmanimLechumra,
+            Customizations = settings.ZmanCustomizations ?? new List<ZmanCustomization>(),
+            DuplicateRows = settings.ZmanDuplicateRows ?? new List<ZmanDuplicateRow>(),
+        };
+    }
+
+    /// <summary>
+    /// שכבת החישוב ההלכתי: בונה את רשימת זמני היום לפי שיטת החישוב שנבחרה
+    /// (ההגדרות של כל שיטה ב-<see cref="ZmanimMethods"/>), עם ההתאמות של
+    /// המשתמש: שם ושיטה לכל זמן, שורות כפולות, הדלקת נרות, צאת הכוכבים
+    /// בדקות, ועיגול לחומרא. אינה פוסקת הלכה למעשה.
     /// </summary>
     public static class ZmanimCalendar
     {
-        private const double AlotHaShachatDegrees = 16.1;
-        private const double TzeitHakochavimDegrees = 8.5;
-
-        // שיטת ה-MGA "72 דקות זמניות": יחס השעות הזמניות (1.2 = 72/60) לפני
-        // הנץ/אחרי השקיעה ברמת פני הים - ראו ZmanCalculationMethod.Mga72Zmaniyos.
-        private const double Mga72ZmaniyosHours = 1.2;
-
         // שמות קבועים לכל זמן, כדי שגם פאנל ההגדרות (רשימת הזמנים להתראה)
         // וגם שכבת החישוב עצמה ישתמשו באותן מחרוזות בדיוק (מונע חוסר-התאמה).
+        // השמות הם גם המפתחות השמורים בהגדרות - אסור לשנות שם קיים.
         public const string NameAlotHaShachar = "עלות השחר (16.1°)";
+        public const string NameMisheyakir = "זמן טלית ותפילין";
         public const string NameNetz = "הנץ החמה";
         public const string NameSofZmanKriatShmaMga = "סוף זמן ק\"ש (מג\"א)";
         public const string NameSofZmanKriatShmaGra = "סוף זמן ק\"ש (גר\"א)";
         public const string NameSofZmanTefilaMga = "סוף זמן תפילה (מג\"א)";
         public const string NameSofZmanTefilaGra = "סוף זמן תפילה (גר\"א)";
+        public const string NameSofZmanAchilatChametz = "סוף זמן אכילת חמץ";
+        public const string NameSofZmanBiurChametz = "סוף זמן שריפת חמץ";
         public const string NameChatzot = "חצות היום והלילה";
         public const string NameMinchaGedola = "מנחה גדולה";
         public const string NameMinchaKetana = "מנחה קטנה";
         public const string NamePelagHaMincha = "פלג המנחה";
         public const string NameShkia = "שקיעת החמה";
         public const string NameTzeitHakochavim = "צאת הכוכבים";
+        public const string NameTzeitShabbat = "צאת השבת והחג";
         public const string NameRabbeinuTam = "רבנו תם (72 דקות)";
         public const string NameCandleLighting = "הדלקת נרות";
 
         /// <summary>כל שמות הזמנים לפי סדר הופעתם ברשימה - נוח לשימוש בפאנל ההגדרות.</summary>
         public static readonly IReadOnlyList<string> AllZmanNames = new[]
         {
-            NameAlotHaShachar, NameNetz,
+            NameAlotHaShachar, NameMisheyakir, NameNetz,
             NameSofZmanKriatShmaMga, NameSofZmanKriatShmaGra,
             NameSofZmanTefilaMga, NameSofZmanTefilaGra,
+            NameSofZmanAchilatChametz, NameSofZmanBiurChametz,
             NameChatzot, NameMinchaGedola, NameMinchaKetana, NamePelagHaMincha,
-            NameCandleLighting, NameShkia, NameTzeitHakochavim, NameRabbeinuTam,
+            NameCandleLighting, NameShkia, NameTzeitHakochavim, NameTzeitShabbat, NameRabbeinuTam,
+        };
+
+        /// <summary>
+        /// זמנים שהם "סוף" של משהו (או שמוקדם בהם מחמיר) - מעגלים אותם למטה.
+        /// כל השאר הם "התחלה" ומעוגלים למעלה. כך נוהגים אור החיים ועתים לבינה
+        /// (במצב "לחומרא").
+        /// </summary>
+        private static readonly HashSet<string> RoundDownNames = new()
+        {
+            NameAlotHaShachar,
+            NameSofZmanKriatShmaMga, NameSofZmanKriatShmaGra,
+            NameSofZmanTefilaMga, NameSofZmanTefilaGra,
+            NameSofZmanAchilatChametz, NameSofZmanBiurChametz,
+            NameChatzot, NameShkia, NameCandleLighting,
         };
 
         /// <summary>
@@ -95,108 +124,111 @@ namespace HebrewTaskbarWidget.Services
         /// המלאה (ולכן לא יכולות לשקף שם מותאם אישית, אם יש). לתצוגה אמיתית
         /// (לוח הזמנים, התראה בפועל) יש להשתמש בעומס-היתר המקבל ZmanEntry.
         /// </summary>
-        public static string GetPopupDisplayName(string canonicalName)
-        {
-            if (canonicalName == NameAlotHaShachar)
-            {
-                return "עלות השחר";
-            }
-
-            return canonicalName;
-        }
+        public static string GetPopupDisplayName(string canonicalName) => DefaultDisplayName(canonicalName);
 
         /// <summary>
         /// שם הזמן להצגה בלוח הזמנים (הפופ-אפ)/בהתראות בפועל - ה-DisplayName
-        /// של הערך, חוץ מ"עלות השחר" (כשלא הוגדר לו שם מותאם אישית) - שם
-        /// ה-"(16.1°)" הטכני מוצג רק בהגדרות "מיקום וזמנים" (כדי לדייק
-        /// בבחירה), אך מושמט בתצוגה היומיומית. אם למשתמש כבר יש שם מותאם
-        /// אישית לעלות השחר, הוא מוצג כפי שהוא (בלי שום עיבוד נוסף).
+        /// של הערך, חוץ מ"עלות השחר" ו"רבנו תם" (כשלא הוגדר להם שם מותאם
+        /// אישית): הפירוט הטכני שבשם הקנוני (16.1°, 72 דקות) נכון רק לחלק
+        /// מהשיטות, ולכן מושמט בתצוגה היומיומית.
         /// </summary>
         public static string GetPopupDisplayName(ZmanEntry entry)
         {
-            if (entry.Key == NameAlotHaShachar && entry.DisplayName == NameAlotHaShachar)
+            if (entry.DisplayName == entry.Key)
             {
-                return "עלות השחר";
+                return DefaultDisplayName(entry.Key);
             }
 
             return entry.DisplayName;
         }
 
+        private static string DefaultDisplayName(string canonicalName) => canonicalName switch
+        {
+            NameAlotHaShachar => "עלות השחר",
+            NameRabbeinuTam => "רבנו תם",
+            _ => canonicalName,
+        };
+
+        /// <summary>
+        /// השם שמוצג בהגדרות ליד תיבת הסימון - השם הקנוני, אלא אם הפירוט
+        /// שבו לא מתאים לשיטה שנבחרה (למשל "16.1°" בלוח אור החיים).
+        /// </summary>
+        public static string GetSettingsDisplayName(string canonicalName, ZmanCalculationMethod method)
+        {
+            bool canonicalDetailFits = canonicalName switch
+            {
+                NameAlotHaShachar => method == ZmanCalculationMethod.Gra,
+                NameRabbeinuTam => method is ZmanCalculationMethod.Gra or ZmanCalculationMethod.Mga72Zmaniyos or ZmanCalculationMethod.ItimLeBina,
+                _ => true,
+            };
+
+            return canonicalDetailFits ? canonicalName : DefaultDisplayName(canonicalName);
+        }
+
         public static IReadOnlyList<ZmanEntry> Calculate(
-            DateTime date, GeoLocation location,
-            int candleLightingMinutesBeforeSunset = 40,
-            int? tzeitHakochavimMinutesAfterSunset = null,
-            ZmanCalculationMethod method = ZmanCalculationMethod.Gra,
-            IReadOnlyList<ZmanCustomization>? customizations = null,
-            IReadOnlyList<ZmanDuplicateRow>? duplicateRows = null,
-            bool forceIncludeCandleLighting = false)
+            DateTime date, GeoLocation location, ZmanimOptions options, bool forceIncludeConditional = false)
         {
             TimeZoneInfo timeZone = ResolveTimeZone(location.TimeZoneId);
 
-            // מחשבים את כל הזמנים התלויי-שיטה פעמיים (Gra ו-Mga72Zmaniyos) -
-            // זול יחסית (כמה קריאות טריגונומטריות נוספות), ומאפשר לכל זמן
-            // להשתמש בשיטה שלו (הכללית, או דריסה פרטית - ראו ZmanCustomization)
-            // בלי לחשב הכל מחדש שוב בכל פעם. זמנים שלא תלויים בשיטה כלל
-            // (הנץ/שקיעה, רבנו תם וכו') יוצאים זהים בשני המילונים ממילא.
-            Dictionary<string, DateTime?> graTimes = ComputeBaseTimes(date, location, timeZone, ZmanCalculationMethod.Gra);
-            Dictionary<string, DateTime?> mgaTimes = ComputeBaseTimes(date, location, timeZone, ZmanCalculationMethod.Mga72Zmaniyos);
+            // כל שיטה מחושבת רק אם צריך אותה: השיטה הכללית תמיד, ושיטות אחרות
+            // רק אם זמן כלשהו דורס אליהן או שיש שורה כפולה בשיטה כזו.
+            var byMethod = new Dictionary<ZmanCalculationMethod, MethodTimes>();
+            MethodTimes Times(ZmanCalculationMethod m)
+            {
+                if (!byMethod.TryGetValue(m, out MethodTimes? times))
+                {
+                    times = ZmanimMethods.Compute(m, date, location, timeZone);
+                    byMethod[m] = times;
+                }
 
-            DateTime? shkia = graTimes[NameShkia];
+                return times;
+            }
 
-            Dictionary<string, ZmanCustomization> customizationByBase =
-                (customizations ?? Array.Empty<ZmanCustomization>()).ToDictionary(c => c.BaseZmanName);
+            MethodTimes general = Times(options.Method);
+
+            Dictionary<string, ZmanCustomization> customizationByBase = new();
+            foreach (ZmanCustomization c in options.Customizations)
+            {
+                customizationByBase[c.BaseZmanName] = c;
+            }
 
             var duplicateByBase = new Dictionary<string, ZmanDuplicateRow>();
-            foreach (ZmanDuplicateRow dup in duplicateRows ?? Array.Empty<ZmanDuplicateRow>())
+            foreach (ZmanDuplicateRow dup in options.DuplicateRows)
             {
                 duplicateByBase[dup.BaseZmanName] = dup;
             }
+
+            bool isErevPesach = IsErevPesach(date);
+            bool isMotzaeiShabbatOrYomTov = HolidayCalendar.IsShabbatOrYomTov(date) && !HolidayCalendar.IsShabbatOrYomTov(date.AddDays(1));
 
             var entries = new List<ZmanEntry>();
 
             foreach (string baseName in AllZmanNames)
             {
+                if (!forceIncludeConditional)
+                {
+                    if ((baseName is NameSofZmanAchilatChametz or NameSofZmanBiurChametz && !isErevPesach) ||
+                        (baseName == NameTzeitShabbat && !isMotzaeiShabbatOrYomTov))
+                    {
+                        continue;
+                    }
+                }
+
                 if (baseName == NameCandleLighting)
                 {
-                    // forceIncludeCandleLighting: לשימוש בפאנל ההגדרות בלבד
-                    // ("אילו זמנים להציג", לשונית "התראות") - שם רוצים תמיד
-                    // לראות/להגדיר את השורה הזו, לא רק בימים שהיא רלוונטית
-                    // בפועל (בניגוד לתצוגת "היום" האמיתית - הפופ-אפ/התראות,
-                    // ששם עדיין רוצים לדלג עליה בימים לא-רלוונטיים).
-                    CandleLightingKind candleLighting = forceIncludeCandleLighting
-                        ? CandleLightingKind.BeforeSunset
-                        : HolidayCalendar.GetCandleLighting(date);
-
-                    if (candleLighting != CandleLightingKind.None && shkia is not null)
-                    {
-                        string clDisplayName = ResolveDisplayName(baseName, customizationByBase);
-
-                        // במוצאי שבת שלפני חג ובליל יום טוב שני מדליקים רק אחרי צאת הכוכבים, מאש קיימת.
-                        DateTime? clTime = candleLighting == CandleLightingKind.AfterTzeit
-                            ? ResolveZmanTime(NameTzeitHakochavim, method, graTimes, mgaTimes, shkia, tzeitHakochavimMinutesAfterSunset)
-                            : shkia.Value.AddMinutes(-Math.Max(0, candleLightingMinutesBeforeSunset));
-
-                        entries.Add(new ZmanEntry
-                        {
-                            Key = baseName,
-                            DisplayName = candleLighting == CandleLightingKind.AfterTzeit ? $"{clDisplayName} (מאש קיימת)" : clDisplayName,
-                            VoiceKey = baseName,
-                            Time = clTime,
-                        });
-                    }
-
+                    AddCandleLighting(entries, date, options, general, customizationByBase, forceIncludeConditional);
                     continue;
                 }
 
-                ZmanCalculationMethod effectiveMethod = method;
-                customizationByBase.TryGetValue(baseName, out ZmanCustomization? customization);
-                if (customization?.MethodOverride is ZmanCalculationMethod overrideMethod)
+                ZmanCalculationMethod effectiveMethod = options.Method;
+                if (customizationByBase.TryGetValue(baseName, out ZmanCustomization? customization) &&
+                    customization.MethodOverride is ZmanCalculationMethod overrideMethod)
                 {
                     effectiveMethod = overrideMethod;
                 }
 
                 string displayName = ResolveDisplayName(baseName, customizationByBase);
-                DateTime? primaryTime = ResolveZmanTime(baseName, effectiveMethod, graTimes, mgaTimes, shkia, tzeitHakochavimMinutesAfterSunset);
+                DateTime? primaryTime = ResolveZmanTime(baseName, Times(effectiveMethod), options.TzeitHakochavimMinutesAfterSunset, options.RoundLechumra);
                 var primaryEntry = new ZmanEntry { Key = baseName, DisplayName = displayName, VoiceKey = baseName, Time = primaryTime };
 
                 if (duplicateByBase.TryGetValue(baseName, out ZmanDuplicateRow? dup))
@@ -205,9 +237,7 @@ namespace HebrewTaskbarWidget.Services
                     // שקיעה) - זו רלוונטית רק לשורה ה"ראשית", כדי שהכפילה תישאר
                     // תמיד מבוססת-שיטה טהורה (אחרת שתי השורות היו יכולות לצאת
                     // זהות, בניגוד לכל המטרה של הכפלה).
-                    DateTime? duplicateTime = baseName == NameTzeitHakochavim
-                        ? (dup.Method == ZmanCalculationMethod.Gra ? graTimes[baseName] : mgaTimes[baseName])
-                        : ResolveZmanTime(baseName, dup.Method, graTimes, mgaTimes, shkia, tzeitHakochavimMinutesAfterSunset: null);
+                    DateTime? duplicateTime = ResolveZmanTime(baseName, Times(dup.Method), tzeitMinutesAfterSunset: null, options.RoundLechumra);
 
                     // VoiceKey = baseName גם כאן (לא dup.Id!) - אין הקלטה קולית
                     // לשם מותאם אישית; שתי השורות (ראשית וכפולה) מקריאות את
@@ -228,6 +258,48 @@ namespace HebrewTaskbarWidget.Services
             return entries;
         }
 
+        /// <summary>
+        /// הדלקת נרות - רק בערבי שבת וחג (אלא אם forceInclude, לרשימות שבהגדרות).
+        /// לפני השקיעה של השיטה הכללית: בלוח - לפי מנהג העיר שבו (אם המשתמש
+        /// לא ביקש אחרת), ובשאר השיטות לפי מספר הדקות שבהגדרות. במוצאי שבת
+        /// שלפני חג ובליל יום טוב שני - אחרי צאת השבת, מאש קיימת.
+        /// </summary>
+        private static void AddCandleLighting(
+            List<ZmanEntry> entries, DateTime date, ZmanimOptions options, MethodTimes general,
+            Dictionary<string, ZmanCustomization> customizationByBase, bool forceInclude)
+        {
+            CandleLightingKind kind = forceInclude ? CandleLightingKind.BeforeSunset : HolidayCalendar.GetCandleLighting(date);
+            if (kind == CandleLightingKind.None || general.CandleLightingSunset is null)
+            {
+                return;
+            }
+
+            string displayName = ResolveDisplayName(NameCandleLighting, customizationByBase);
+            DateTime? time;
+            if (kind == CandleLightingKind.AfterTzeit)
+            {
+                time = Round(general.Times.GetValueOrDefault(NameTzeitShabbat), NameTzeitShabbat, options.RoundLechumra);
+                displayName = $"{displayName} (מאש קיימת)";
+            }
+            else
+            {
+                time = Round(general.CandleLightingSunset.Value.AddMinutes(-EffectiveCandleLightingMinutes(options, general)), NameCandleLighting, options.RoundLechumra);
+            }
+
+            entries.Add(new ZmanEntry { Key = NameCandleLighting, DisplayName = displayName, VoiceKey = NameCandleLighting, Time = time });
+        }
+
+        private static int EffectiveCandleLightingMinutes(ZmanimOptions options, MethodTimes general) =>
+            options.CandleLightingByLuach && general.LuachCandleLightingMinutes is int luachMinutes
+                ? luachMinutes
+                : Math.Max(0, options.CandleLightingMinutesBeforeSunset);
+
+        private static bool IsErevPesach(DateTime date)
+        {
+            HebrewDate hebrew = HebrewCalendarMath.FromGregorian(date);
+            return hebrew.Month == HebrewMonth.Nisan && hebrew.Day == 14;
+        }
+
         private static string ResolveDisplayName(string baseName, Dictionary<string, ZmanCustomization> customizationByBase)
         {
             if (customizationByBase.TryGetValue(baseName, out ZmanCustomization? customization) &&
@@ -239,142 +311,54 @@ namespace HebrewTaskbarWidget.Services
             return baseName;
         }
 
-        private static DateTime? ResolveZmanTime(
-            string baseName, ZmanCalculationMethod method,
-            Dictionary<string, DateTime?> graTimes, Dictionary<string, DateTime?> mgaTimes,
-            DateTime? shkia, int? tzeitHakochavimMinutesAfterSunset)
+        private static DateTime? ResolveZmanTime(string baseName, MethodTimes times, int? tzeitMinutesAfterSunset, bool roundLechumra)
         {
             // "צאת הכוכבים": אם המשתמש הגדיר "דקות אחרי השקיעה" מפורש (ראו
             // AppSettings.TzeitHakochavimMinutesAfterSunset) - זה מה שמוצג,
             // במקום החישוב מבוסס-השיטה. משפיע רק על הזמן *המוצג* - לא על
-            // חישובים פנימיים אחרים (כמו סוף זמן ק"ש/תפילה מג"א), שממשיכים
-            // תמיד להתבסס על חישוב "צאת הכוכבים" הטהור לפי השיטה שנבחרה.
-            if (baseName == NameTzeitHakochavim && tzeitHakochavimMinutesAfterSunset.HasValue)
+            // זמנים אחרים (כמו סוף זמן ק"ש מג"א), שממשיכים להתבסס על השיטה.
+            if (baseName == NameTzeitHakochavim && tzeitMinutesAfterSunset.HasValue)
             {
-                return shkia?.AddMinutes(Math.Max(0, tzeitHakochavimMinutesAfterSunset.Value));
+                DateTime? shkia = times.Times.GetValueOrDefault(NameShkia);
+                return Round(shkia?.AddMinutes(Math.Max(0, tzeitMinutesAfterSunset.Value)), baseName, roundLechumra);
             }
 
-            Dictionary<string, DateTime?> source = method == ZmanCalculationMethod.Gra ? graTimes : mgaTimes;
-            return source.TryGetValue(baseName, out DateTime? time) ? time : null;
+            return Round(times.Times.GetValueOrDefault(baseName), baseName, roundLechumra);
         }
 
         /// <summary>
-        /// מחשבת את כל הזמנים (חוץ מ"הדלקת נרות", המטופל בנפרד ב-Calculate כי
-        /// אינו תלוי-שיטה ומוצג רק בערבי שבת/חג) לפי שיטת חישוב נתונה - ראו
-        /// ZmanCalculationMethod. זמנים שאינם תלויים בשיטה כלל (הנץ/שקיעה
-        /// "מותאמי-גובה", זמני גר"א, רבנו תם) יוצאים זהים בין שתי השיטות.
+        /// עיגול לדקה שלמה. לחומרא: סוף זמן למטה, תחילת זמן למעלה (ראו
+        /// <see cref="RoundDownNames"/>). אחרת - לדקה הקרובה.
         /// </summary>
-        private static Dictionary<string, DateTime?> ComputeBaseTimes(DateTime date, GeoLocation location, TimeZoneInfo timeZone, ZmanCalculationMethod method)
+        internal static DateTime? Round(DateTime? time, string baseName, bool lechumra)
         {
-            var result = new Dictionary<string, DateTime?>();
-
-            DateTime? seaLevelSunrise = AstronomicalCalculator.CalculateSunEvent(
-                date, location.LatitudeDegrees, location.LongitudeDegrees, AstronomicalCalculator.GeometricZenith, isSunrise: true, timeZone);
-            DateTime? seaLevelSunset = AstronomicalCalculator.CalculateSunEvent(
-                date, location.LatitudeDegrees, location.LongitudeDegrees, AstronomicalCalculator.GeometricZenith, isSunrise: false, timeZone);
-
-            double elevationZenithAdjustmentDegrees = ElevationAdjustmentDegrees(location.ElevationMeters);
-
-            DateTime? netz = AstronomicalCalculator.CalculateSunEvent(
-                date, location.LatitudeDegrees, location.LongitudeDegrees,
-                AstronomicalCalculator.GeometricZenith + elevationZenithAdjustmentDegrees, isSunrise: true, timeZone);
-            DateTime? shkia = AstronomicalCalculator.CalculateSunEvent(
-                date, location.LatitudeDegrees, location.LongitudeDegrees,
-                AstronomicalCalculator.GeometricZenith + elevationZenithAdjustmentDegrees, isSunrise: false, timeZone);
-
-            DateTime? alotHaShachar;
-            DateTime? tzeitHakochavim;
-
-            if (method == ZmanCalculationMethod.Mga72Zmaniyos && seaLevelSunrise is not null && seaLevelSunset is not null)
-            {
-                // ראו תיעוד ZmanCalculationMethod.Mga72Zmaniyos - נוסחה מדוייקת
-                // מ-KosherJava (ComplexZmanimCalendar.GetAlos72/GetTzais72Zmanis
-                // וכיו"ב): שעה זמנית "גר"א" מחושבת מרמת פני הים, ו-1.2 שעות
-                // זמניות כאלה (=72 "דקות זמניות") לפני/אחרי הנץ/שקיעה.
-                double shaahZmanisGraMinutes = (seaLevelSunset.Value - seaLevelSunrise.Value).TotalMinutes / 12.0;
-                alotHaShachar = seaLevelSunrise.Value.AddMinutes(-shaahZmanisGraMinutes * Mga72ZmaniyosHours);
-                tzeitHakochavim = seaLevelSunset.Value.AddMinutes(shaahZmanisGraMinutes * Mga72ZmaniyosHours);
-            }
-            else
-            {
-                alotHaShachar = AstronomicalCalculator.CalculateSunEvent(
-                    date, location.LatitudeDegrees, location.LongitudeDegrees,
-                    AstronomicalCalculator.GeometricZenith + AlotHaShachatDegrees, isSunrise: true, timeZone);
-                tzeitHakochavim = AstronomicalCalculator.CalculateSunEvent(
-                    date, location.LatitudeDegrees, location.LongitudeDegrees,
-                    AstronomicalCalculator.GeometricZenith + TzeitHakochavimDegrees, isSunrise: false, timeZone);
-            }
-
-            result[NameAlotHaShachar] = alotHaShachar;
-            result[NameNetz] = netz;
-            result[NameShkia] = shkia;
-            result[NameTzeitHakochavim] = tzeitHakochavim;
-            result[NameRabbeinuTam] = shkia?.AddMinutes(72);
-
-            if (netz is not null && shkia is not null)
-            {
-                double shaaZmanitGraMinutes = (shkia.Value - netz.Value).TotalMinutes / 12.0;
-
-                result[NameSofZmanKriatShmaMga] = AddMinutesFromMga(alotHaShachar, tzeitHakochavim, 3.0);
-                result[NameSofZmanKriatShmaGra] = netz.Value.AddMinutes(shaaZmanitGraMinutes * 3.0);
-                result[NameSofZmanTefilaMga] = AddMinutesFromMga(alotHaShachar, tzeitHakochavim, 4.0);
-                result[NameSofZmanTefilaGra] = netz.Value.AddMinutes(shaaZmanitGraMinutes * 4.0);
-                result[NameChatzot] = netz.Value.AddMinutes((shkia.Value - netz.Value).TotalMinutes / 2.0);
-                result[NameMinchaGedola] = netz.Value.AddMinutes(shaaZmanitGraMinutes * 6.5);
-                result[NameMinchaKetana] = netz.Value.AddMinutes(shaaZmanitGraMinutes * 9.5);
-                result[NamePelagHaMincha] = netz.Value.AddMinutes(shaaZmanitGraMinutes * 10.75);
-            }
-            else
-            {
-                // מגן מפני מצב קיצון תיאורטי (לא צפוי בקווי רוחב של ישראל) שבו
-                // לא ניתן לחשב הנץ/שקיעה גיאומטריים ביום הנתון.
-                result[NameSofZmanKriatShmaMga] = null;
-                result[NameSofZmanKriatShmaGra] = null;
-                result[NameSofZmanTefilaMga] = null;
-                result[NameSofZmanTefilaGra] = null;
-                result[NameChatzot] = null;
-                result[NameMinchaGedola] = null;
-                result[NameMinchaKetana] = null;
-                result[NamePelagHaMincha] = null;
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// עבור זמנים המחושבים בשיטת "היום המגן אברהם" (72 דקות לפני עלות ועד אחרי צאת),
-        /// כאשר יש עלות/צאת בזווית תקפים משתמשים בהם; אחרת נופלים חזרה לגישת 72 הדקות
-        /// הקבועות סביב הנץ/שקיעה הגיאומטריים.
-        /// </summary>
-        private static DateTime? AddMinutesFromMga(DateTime? alotHaShachar, DateTime? tzeitHakochavim, double shaosZmaniyot)
-        {
-            if (alotHaShachar is null || tzeitHakochavim is null)
+            if (time is null)
             {
                 return null;
             }
 
-            double mgaDayMinutes = (tzeitHakochavim.Value - alotHaShachar.Value).TotalMinutes;
-            double shaaZmanitMgaMinutes = mgaDayMinutes / 12.0;
+            const long ticksPerMinute = TimeSpan.TicksPerMinute;
+            long ticks = time.Value.Ticks;
+            long floor = ticks - ticks % ticksPerMinute;
 
-            return alotHaShachar.Value.AddMinutes(shaaZmanitMgaMinutes * shaosZmaniyot);
-        }
-
-        /// <summary>
-        /// תוספת המעלות לזווית הזנית הנובעת מגובה מעל פני הים - ככל שהמיקום גבוה
-        /// יותר, האופק הנראה בפועל נמוך יותר, והנץ מוקדם יותר / השקיעה מאוחרת יותר.
-        /// נוסחה סטנדרטית: dip (מעלות) ≈ 0.0347 * sqrt(גובה במטרים).
-        /// </summary>
-        private static double ElevationAdjustmentDegrees(double elevationMeters)
-        {
-            if (elevationMeters <= 0)
+            long rounded;
+            if (!lechumra)
             {
-                return 0;
+                rounded = ticks - floor >= ticksPerMinute / 2 ? floor + ticksPerMinute : floor;
+            }
+            else if (RoundDownNames.Contains(baseName) || floor == ticks)
+            {
+                rounded = floor;
+            }
+            else
+            {
+                rounded = floor + ticksPerMinute;
             }
 
-            return 0.0347 * Math.Sqrt(elevationMeters);
+            return new DateTime(rounded, time.Value.Kind);
         }
 
-        private static TimeZoneInfo ResolveTimeZone(string timeZoneId)
+        internal static TimeZoneInfo ResolveTimeZone(string timeZoneId)
         {
             try
             {

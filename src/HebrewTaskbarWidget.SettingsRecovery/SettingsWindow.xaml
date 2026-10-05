@@ -280,7 +280,7 @@
                 </TabItem>
 
                 <!-- עמוד 2: לוח עברי ומועדים -->
-                <TabItem Header="לוח עברי ומועדים" Tag="לוח ארץ ישראל או חו&quot;ל, מנהג הקהילה, ואילו מועדים להציג">
+                <TabItem Header="לוח עברי ומועדים" Tag="לוח ארץ ישראל או חו&quot;ל, מנהג הלכתי, ואילו מועדים להציג">
                     <ScrollViewer x:Name="CalendarTabScrollViewer" VerticalScrollBarVisibility="Auto">
                         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" MaxWidth="960" /></Grid.ColumnDefinitions><StackPanel Margin="28,0,32,28">
                             <controls:SettingsCard Glyph="&#xE909;" Header="לוח המועדים" Keywords="ישראל חו&quot;ל תפוצות גלויות יום טוב שני פרשה"
@@ -305,7 +305,7 @@
                                     <TextBlock x:Name="PurimStatusText" Style="{StaticResource DescriptionText}" Margin="0" />
                                 </controls:SettingsCard.Details>
                             </controls:SettingsCard>
-                            <controls:SettingsCard Glyph="&#xE82D;" Header="מנהג הקהילה" Keywords="אשכנז ספרד עדות המזרח מנהג סליחות"
+                            <controls:SettingsCard Glyph="&#xE82D;" Header="מנהג הלכתי" Keywords="אשכנז ספרד עדות המזרח מנהג קהילה סליחות"
                                                    Description="קובע את המועדים שתלויים במנהג - למשל מתי מתחילים לומר סליחות">
                                 <ComboBox x:Name="MinhagComboBox" MinWidth="220" SelectionChanged="HolidaySettingControl_Changed">
                                     <ComboBoxItem Content="אשכנז" />
@@ -357,11 +357,8 @@
                             <controls:SettingsCard Glyph="&#xE8F1;" Header="אסרו חג" Description="היום שאחרי סוכות, פסח ושבועות">
                                 <CheckBox x:Name="HolidayShowIsruChagCheckBox" Style="{StaticResource ToggleSwitchStyle}" Checked="HolidaySettingControl_Changed" Unchecked="HolidaySettingControl_Changed" />
                             </controls:SettingsCard>
-                            <controls:SettingsCard Glyph="&#xE7C1;" Header="יום כיפור קטן" Description="ערב ראש חודש (חוץ מתשרי, חשון, טבת ואייר). נהוג בעיקר בקהילות אשכנז.">
-                                <CheckBox x:Name="HolidayShowYomKippurKatanCheckBox" Style="{StaticResource ToggleSwitchStyle}" Checked="HolidaySettingControl_Changed" Unchecked="HolidaySettingControl_Changed" />
-                            </controls:SettingsCard>
 
-                            <TextBlock Style="{StaticResource GroupHeader}" Text="לפי מנהג הקהילה" />
+                            <TextBlock Style="{StaticResource GroupHeader}" Text="לפי המנהג ההלכתי" />
                             <controls:SettingsCard x:Name="SelichotCard" Glyph="&#xE720;" Header="תחילת הסליחות" Keywords="סליחות אלול">
                                 <CheckBox x:Name="HolidayShowSelichotCheckBox" Style="{StaticResource ToggleSwitchStyle}" Checked="HolidaySettingControl_Changed" Unchecked="HolidaySettingControl_Changed" />
                             </controls:SettingsCard>
@@ -369,8 +366,12 @@
                                                    Description="שני, חמישי ושני אחרי סוכות ואחרי פסח (בחודשים חשון ואייר) - מנהג אשכנז">
                                 <CheckBox x:Name="HolidayShowBehabCheckBox" Style="{StaticResource ToggleSwitchStyle}" Checked="HolidaySettingControl_Changed" Unchecked="HolidaySettingControl_Changed" />
                             </controls:SettingsCard>
+                            <controls:SettingsCard x:Name="YomKippurKatanCard" Glyph="&#xE7C1;" Header="יום כיפור קטן" Keywords="ערב ראש חודש"
+                                                   Description="ערב ראש חודש (חוץ מתשרי, חשון, טבת ואייר) - מנהג אשכנז">
+                                <CheckBox x:Name="HolidayShowYomKippurKatanCheckBox" Style="{StaticResource ToggleSwitchStyle}" Checked="HolidaySettingControl_Changed" Unchecked="HolidaySettingControl_Changed" />
+                            </controls:SettingsCard>
                             <controls:SettingsCard x:Name="CommunityCustomsCard" Glyph="&#xE734;" Header="מימונה" Keywords="מרוקו עדות"
-                                                   Description="במוצאי פסח - מנהג יהודי צפון אפריקה">
+                                                   Description="במוצאי פסח - מנהג עדות המזרח">
                                 <CheckBox x:Name="HolidayShowCommunityCheckBox" Style="{StaticResource ToggleSwitchStyle}" Checked="HolidaySettingControl_Changed" Unchecked="HolidaySettingControl_Changed" />
                             </controls:SettingsCard>
 
@@ -456,11 +457,15 @@
                             </controls:SettingsCard>
 
                             <TextBlock Style="{StaticResource GroupHeader}" Text="זמני היום" />
-                            <controls:SettingsCard Glyph="&#xE9E9;" Header="שיטת חישוב עלות השחר וצאת הכוכבים" Keywords="מגן אברהם גר&quot;א 72 דקות זווית">
-                                <ComboBox x:Name="ZmanCalculationMethodComboBox" MinWidth="250">
-                                    <ComboBoxItem Content="זווית שמש - ברירת מחדל" />
-                                    <ComboBoxItem Content="72 דקות זמניות" />
-                                </ComboBox>
+                            <controls:SettingsCard x:Name="ZmanCalculationMethodCard" Glyph="&#xE9E9;" Header="שיטת חישוב הזמנים"
+                                                   Keywords="מגן אברהם גר&quot;א 72 דקות זווית לוח אור החיים עתים לבינה עובדיה יוסף גלויברמן">
+                                <ComboBox x:Name="ZmanCalculationMethodComboBox" MinWidth="250"
+                                          SelectionChanged="ZmanCalculationMethodComboBox_SelectionChanged" />
+                            </controls:SettingsCard>
+                            <controls:SettingsCard Glyph="&#xE823;" Header="עיגול הזמנים לחומרא" Keywords="עיגול דקה שניות"
+                                                   Description="כמו בלוחות: סוף זמן (ק&quot;ש, תפילה, שקיעה) מעוגל לדקה שלפניו, ותחילת זמן (הנץ, מנחה, צאת הכוכבים) לדקה שאחריו. כבוי: לדקה הקרובה.">
+                                <CheckBox x:Name="RoundZmanimLechumraCheckBox" Style="{StaticResource ToggleSwitchStyle}"
+                                          Checked="RoundZmanimLechumraCheckBox_CheckedChanged" Unchecked="RoundZmanimLechumraCheckBox_CheckedChanged" />
                             </controls:SettingsCard>
                             <controls:SettingsCard Glyph="&#xE8FD;" Header="אילו זמנים להציג" Keywords="הדלקת נרות שם מותאם"
                                                    Description="בלוח הזמנים וברשימות של עמוד ההתראות. לחיצה על שם של זמן פותחת עריכה.">
@@ -472,7 +477,7 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE946;" Style="{StaticResource IconText}" Foreground="{DynamicResource AccentForegroundBrush}" Margin="0,0,10,0" />
                                     <TextBlock TextWrapping="Wrap" VerticalAlignment="Center"
-                                               Text="הזמנים משוערים לפי חישוב אסטרונומי. להלכה למעשה כדאי להתייעץ עם רב." />
+                                               Text="הזמנים מחושבים אסטרונומית ויכולים להיות שונים בדקה מהלוח המודפס. הנץ והשקיעה הנראים (מאחורי הרים) אינם מחושבים. להלכה למעשה כדאי להתייעץ עם רב." />
                                 </StackPanel>
                             </Border>
 

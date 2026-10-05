@@ -234,6 +234,25 @@ public class SettingsWindowTests
         });
     }
 
+    [Theory]
+    [InlineData(CommunityMinhag.Ashkenaz)]
+    [InlineData(CommunityMinhag.Sephardi)]
+    public void MinhagCards_FollowTheChosenMinhag(CommunityMinhag minhag)
+    {
+        var settings = new AppSettings();
+        settings.Holidays.Minhag = minhag;
+        SettingsService.Save(settings);
+
+        WithWindow(window =>
+        {
+            bool ashkenaz = minhag == CommunityMinhag.Ashkenaz;
+            Assert.Equal(ashkenaz ? Visibility.Visible : Visibility.Collapsed, window.YomKippurKatanCard.Visibility);
+            Assert.Equal(ashkenaz ? Visibility.Visible : Visibility.Collapsed, window.BehabCard.Visibility);
+            Assert.Equal(ashkenaz ? Visibility.Collapsed : Visibility.Visible, window.CommunityCustomsCard.Visibility);
+            Assert.Equal(ashkenaz ? "ליל סליחות" : "תחילת הסליחות מב' באלול", window.SelichotCard.Header);
+        });
+    }
+
     [Fact]
     public void RestoreDefaults_ResetsEverythingIncludingStartup()
     {
@@ -389,7 +408,9 @@ public class SettingsWindowTests
             ElevationMeters = 100,
             CandleLightingMinutesBeforeSunset = 30,
             TzeitHakochavimMinutesAfterSunset = 20,
-            DefaultZmanCalculationMethod = ZmanCalculationMethod.Mga72Zmaniyos,
+            DefaultZmanCalculationMethod = ZmanCalculationMethod.ItimLeBina,
+            CandleLightingByLuach = false,
+            RoundZmanimLechumra = false,
             HebrewDayChangeMode = HebrewDayChangeMode.AtSunset,
             Use12HourFormat = true,
             ShowSecondsInTime = true,
@@ -432,7 +453,7 @@ public class SettingsWindowTests
         s.Holidays.WidgetPrimaryOnly = false;
 
         s.VisibleZmanNames = new List<string> { ZmanimCalendar.NameTzeitHakochavim };
-        s.ZmanCustomizations.Add(new ZmanCustomization { BaseZmanName = ZmanimCalendar.NameTzeitHakochavim, CustomName = "צאת", MethodOverride = ZmanCalculationMethod.Mga72Zmaniyos });
+        s.ZmanCustomizations.Add(new ZmanCustomization { BaseZmanName = ZmanimCalendar.NameTzeitHakochavim, CustomName = "צאת", MethodOverride = ZmanCalculationMethod.OrHaChaim });
         s.ZmanNotificationRules[0].Enabled = true;
         s.ZmanNotificationRules[0].MinutesBefore = 75;
         s.OverlayItemOrder.Reverse();

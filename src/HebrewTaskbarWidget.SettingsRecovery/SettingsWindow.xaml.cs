@@ -203,6 +203,11 @@ namespace HebrewTaskbarWidget
                 NotificationToastPositionComboBox,
                 NotificationToastPositionComboBox.Items.OfType<ComboBoxItem>().Select(item => item.Content?.ToString() ?? string.Empty));
 
+            foreach (ZmanCalculationMethod method in ZmanimMethods.All)
+            {
+                ZmanCalculationMethodComboBox.Items.Add(new ComboBoxItem { Content = ZmanimMethods.Label(method) });
+            }
+
             // עובדים על עותק, כדי שלחיצה על "ביטול" לא תשאיר שינויים חלקיים.
             _working = CloneSettings(SettingsService.Current);
 
@@ -454,6 +459,8 @@ namespace HebrewTaskbarWidget
                 CandleLightingMinutesBeforeSunset = source.CandleLightingMinutesBeforeSunset,
                 TzeitHakochavimMinutesAfterSunset = source.TzeitHakochavimMinutesAfterSunset,
                 DefaultZmanCalculationMethod = source.DefaultZmanCalculationMethod,
+                CandleLightingByLuach = source.CandleLightingByLuach,
+                RoundZmanimLechumra = source.RoundZmanimLechumra,
                 ZmanCustomizations = source.ZmanCustomizations.Select(c => new ZmanCustomization
                 {
                     BaseZmanName = c.BaseZmanName,
@@ -746,6 +753,9 @@ namespace HebrewTaskbarWidget
         /// <summary>"כמה דקות לפני השקיעה" עבור "הדלקת נרות" - נערך דרך ZmanEditDialog (לא עוד תיבת הזנה ישירות בשורה) - ראו AppSettings.CandleLightingMinutesBeforeSunset.</summary>
         private int _candleLightingMinutesBeforeSunset = 40;
 
+        /// <summary>הדלקת נרות לפי מנהג העיר בלוח שנבחר - ראו AppSettings.CandleLightingByLuach. נערך דרך ZmanEditDialog.</summary>
+        private bool _candleLightingByLuach = true;
+
         /// <summary>"כמה דקות אחרי השקיעה" עבור "צאת הכוכבים" - null (ברירת המחדל) = לפי שיטת החישוב. נערך דרך ZmanEditDialog - ראו AppSettings.TzeitHakochavimMinutesAfterSunset.</summary>
         private int? _tzeitMinutesAfterSunsetOverride;
 
@@ -790,7 +800,16 @@ namespace HebrewTaskbarWidget
                 _zmanVisibilityCheckBoxes[entry.Key] = checkBox;
 
                 var nameText = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
-                var nameLink = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(entry.DisplayName)) { Tag = dialogTargetKey };
+                string shownName = entry.DisplayName;
+                if (!isDuplicate && entry.DisplayName == entry.Key)
+                {
+                    ZmanCalculationMethod entryMethod = _zmanCustomizations.TryGetValue(entry.Key, out ZmanCustomization? c) && c.MethodOverride is ZmanCalculationMethod m
+                        ? m
+                        : SelectedGlobalMethod();
+                    shownName = Services.ZmanimCalendar.GetSettingsDisplayName(entry.Key, entryMethod);
+                }
+
+                var nameLink = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(shownName)) { Tag = dialogTargetKey };
                 nameLink.Click += ZmanNameLink_Click;
                 nameText.Inlines.Add(nameLink);
                 row.Children.Add(nameText);
@@ -822,16 +841,65 @@ namespace HebrewTaskbarWidget
         {
             try
             {
-                var method = (ZmanCalculationMethod)ZmanCalculationMethodComboBox.SelectedIndex;
                 return Services.ZmanimCalendar.Calculate(
-                    AppTimeService.Today(), SettingsService.BuildLocation(),
-                    _candleLightingMinutesBeforeSunset, _tzeitMinutesAfterSunsetOverride,
-                    method, _zmanCustomizations.Values.ToList(), _zmanDuplicateRows,
-                    forceIncludeCandleLighting: true);
+                    AppTimeService.Today(), BuildEditedLocation(), BuildEditedZmanimOptions(),
+                    forceIncludeConditional: true);
             }
             catch
             {
                 return Array.Empty<Services.ZmanEntry>();
+            }
+        }
+
+        private ZmanCalculationMethod SelectedGlobalMethod()
+        {
+            int index = ZmanCalculationMethodComboBox.SelectedIndex;
+            return index >= 0 && index < ZmanimMethods.All.Count ? ZmanimMethods.All[index] : ZmanCalculationMethod.Gra;
+        }
+
+        /// <summary>הגדרות החישוב כפי שהן כרגע בחלון (כולל שינויים שעוד לא נשמרו).</summary>
+        private ZmanimOptions BuildEditedZmanimOptions() => new()
+        {
+            Method = SelectedGlobalMethod(),
+            CandleLightingMinutesBeforeSunset = _candleLightingMinutesBeforeSunset,
+            CandleLightingByLuach = _candleLightingByLuach,
+            TzeitHakochavimMinutesAfterSunset = _tzeitMinutesAfterSunsetOverride,
+            RoundLechumra = RoundZmanimLechumraCheckBox.IsChecked == true,
+            Customizations = _zmanCustomizations.Values.ToList(),
+            DuplicateRows = _zmanDuplicateRows.ToList(),
+        };
+
+        /// <summary>המיקום כפי שהוא כרגע בחלון - כדי שהזמנים בהגדרות יתעדכנו מיד עם בחירת עיר.</summary>
+        private GeoLocation BuildEditedLocation()
+        {
+            int locationIndex = LocationPresetComboBox.SelectedIndex;
+            bool isPreset = locationIndex >= 0 && locationIndex < LocationPresets.Length;
+
+            return new GeoLocation
+            {
+                Name = isPreset ? LocationPresets[locationIndex].Name : _working.LocationName,
+                LatitudeDegrees = ParseClamped(LatitudeTextBox.Text, _working.Latitude, -90, 90),
+                LongitudeDegrees = ParseClamped(LongitudeTextBox.Text, _working.Longitude, -180, 180),
+                ElevationMeters = ParseClamped(ElevationTextBox.Text, _working.ElevationMeters, -500, 9000),
+                TimeZoneId = string.IsNullOrWhiteSpace(TimeZoneTextBox.Text) ? _working.TimeZoneId : TimeZoneTextBox.Text.Trim(),
+            };
+        }
+
+        private void ZmanCalculationMethodComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            ZmanCalculationMethodCard.Description = ZmanimMethods.Description(SelectedGlobalMethod());
+
+            if (IsLoaded && !_isLoading)
+            {
+                RefreshZmanPanelsPreservingState();
+            }
+        }
+
+        private void RoundZmanimLechumraCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            if (IsLoaded && !_isLoading)
+            {
+                RefreshZmanPanelsPreservingState();
             }
         }
 
@@ -861,11 +929,9 @@ namespace HebrewTaskbarWidget
                     .ToList();
 
                 IReadOnlyList<Services.ZmanEntry> testEntries = Services.ZmanimCalendar.Calculate(
-                    AppTimeService.Today(), SettingsService.BuildLocation(),
-                    _candleLightingMinutesBeforeSunset, _tzeitMinutesAfterSunsetOverride,
-                    (ZmanCalculationMethod)ZmanCalculationMethodComboBox.SelectedIndex,
-                    testCustomizations, Array.Empty<ZmanDuplicateRow>(),
-                    forceIncludeCandleLighting: true);
+                    AppTimeService.Today(), BuildEditedLocation(),
+                    BuildEditedZmanimOptions() with { Customizations = testCustomizations, DuplicateRows = Array.Empty<ZmanDuplicateRow>() },
+                    forceIncludeConditional: true);
 
                 return testEntries.FirstOrDefault(e => e.Key == baseZmanName)?.Time;
             }
@@ -879,13 +945,15 @@ namespace HebrewTaskbarWidget
         {
             _zmanCustomizations.TryGetValue(baseZmanName, out ZmanCustomization? existingCustomization);
             ZmanDuplicateRow? existingDuplicate = _zmanDuplicateRows.FirstOrDefault(d => d.BaseZmanName == baseZmanName);
-            var globalMethod = (ZmanCalculationMethod)ZmanCalculationMethodComboBox.SelectedIndex;
+            ZmanCalculationMethod globalMethod = SelectedGlobalMethod();
 
             var dialog = new ZmanEditDialog(
                 baseZmanName,
                 existingCustomization?.CustomName,
                 existingCustomization?.MethodOverride,
                 _candleLightingMinutesBeforeSunset,
+                _candleLightingByLuach,
+                ZmanimMethods.LuachCandleLightingMinutes(globalMethod, BuildEditedLocation()),
                 _tzeitMinutesAfterSunsetOverride,
                 existingDuplicate,
                 globalMethod,
@@ -905,6 +973,7 @@ namespace HebrewTaskbarWidget
             if (baseZmanName == Services.ZmanimCalendar.NameCandleLighting)
             {
                 _candleLightingMinutesBeforeSunset = dialog.ResultCandleLightingMinutes;
+                _candleLightingByLuach = dialog.ResultCandleLightingByLuach;
             }
             else if (baseZmanName == Services.ZmanimCalendar.NameTzeitHakochavim)
             {
@@ -1252,7 +1321,9 @@ namespace HebrewTaskbarWidget
             HolidayWidgetPrimaryOnlyCheckBox.IsChecked = holidays.WidgetPrimaryOnly;
             HolidayDayNumbersCheckBox.IsChecked = holidays.ShowDayNumbers;
 
-            ZmanCalculationMethodComboBox.SelectedIndex = (int)s.DefaultZmanCalculationMethod;
+            ZmanCalculationMethodComboBox.SelectedIndex = Math.Max(0, ZmanimMethods.All.ToList().IndexOf(s.DefaultZmanCalculationMethod));
+            RoundZmanimLechumraCheckBox.IsChecked = s.RoundZmanimLechumra;
+            _candleLightingByLuach = s.CandleLightingByLuach;
 
             // --- זמנים: התאמות אישיות/כפילות - נטענים *לפני* בניית הרשימה
             // (BuildZmanVisibilityPanel), כדי שהיא תציג מיד שמות מותאמים
@@ -1570,8 +1641,9 @@ namespace HebrewTaskbarWidget
                 TimeZoneTextBox.Text = timeZoneId;
             }
 
-            // מצבי "אוטומטי" בעמוד הלוח העברי תלויים במיקום.
+            // מצבי "אוטומטי" בעמוד הלוח העברי תלויים במיקום, וכך גם הזמנים.
             RefreshHolidayPage();
+            RefreshZmanPanelsPreservingState();
         }
 
         /// <summary>
@@ -2858,7 +2930,9 @@ namespace HebrewTaskbarWidget
                     CustomName = d.CustomName,
                     Method = d.Method,
                 }).ToList(),
-                DefaultZmanCalculationMethod = (ZmanCalculationMethod)ZmanCalculationMethodComboBox.SelectedIndex,
+                DefaultZmanCalculationMethod = SelectedGlobalMethod(),
+                CandleLightingByLuach = _candleLightingByLuach,
+                RoundZmanimLechumra = RoundZmanimLechumraCheckBox.IsChecked == true,
                 VisibleZmanNames = visibleZmanNames,
 
                 // --- תאריך ושעה ---
