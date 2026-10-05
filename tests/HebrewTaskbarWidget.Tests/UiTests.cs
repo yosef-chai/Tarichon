@@ -19,6 +19,8 @@ namespace HebrewTaskbarWidget.Tests;
 [Collection("UI")]
 public class UiTests
 {
+    public UiTests() => TestIsolation.ResetSettings();
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -263,13 +265,140 @@ public class UiTests
     }
 
     [Theory]
-    [InlineData(800, 700, 300, 400, double.PositiveInfinity)] // הכל נכנס
-    [InlineData(600, 700, 300, 300, 200)]                     // חסרים 100: הרשימה מתקצרת
-    [InlineData(300, 700, 300, 300, 120)]                     // מינימום שלוש-ארבע שורות
-    [InlineData(700, 600, 200, 300, double.PositiveInfinity)] // כבר מוגבלת אבל עכשיו יש מקום לכולה
-    public void ZmanimPopup_ListHeightFitsScreen(double available, double visible, double currentList, double naturalList, double expected)
+    [InlineData(1040, 0, 1040 - 6 - 8 + 24)] // כל הגובה מעל הוידג'ט
+    [InlineData(1400, 40, 1400 - 6 - 40 - 8 + 24)]
+    [InlineData(300, 0, ZmanimPopup.MinWindowHeight)] // מסך נמוך מאוד: לא פחות מהמינימום
+    public void ZmanimPopup_WindowHeightFillsSpaceAboveWidget(double widgetTop, double workTop, double expected)
     {
-        Assert.Equal(expected, ZmanimPopup.ComputeListMaxHeight(available, visible, currentList, naturalList));
+        double height = ZmanimPopup.ComputeWindowHeight(widgetTop, workTop);
+        Assert.Equal(expected, height);
+
+        // ראש המשטח הנראה לא עולה מעל אזור העבודה (חוץ ממקרה המינימום)
+        double top = ZmanimPopup.ComputePopupTop(widgetTop, height);
+        if (height > ZmanimPopup.MinWindowHeight)
+        {
+            Assert.Equal(workTop + 8, top + ZmanimPopup.ShadowInset);
+        }
+    }
+
+    /// <summary>
+    /// מניעת ריצוד: כל לחיצה בלוח (ימים, לוח שנה, חודשים, עברי/לועזי) משנה רק את התוכן -
+    /// גודל החלון ומיקומו נשארים קבועים, והמשטח נשאר צמוד לתחתית ולא חורג מהחלון.
+    /// </summary>
+    [Fact]
+    public void ZmanimPopup_WindowNeverResizesOrMovesWhenClickingButtons()
+    {
+        UiTestHost.Run(() =>
+        {
+            var popup = new ZmanimPopup { Left = -30000, Top = -30000, ShowActivated = false };
+            try
+            {
+                popup.Show();
+                UiTestHost.DoEvents();
+                var root = (FrameworkElement)popup.Content;
+
+                var initial = new Rect(popup.Left, popup.Top, popup.ActualWidth, popup.ActualHeight);
+                Assert.Equal(346, initial.Width);
+                double surfaceBottom = SurfaceBottom();
+
+                void Check(string step)
+                {
+                    UiTestHost.DoEvents();
+                    Assert.True(new Rect(popup.Left, popup.Top, popup.ActualWidth, popup.ActualHeight) == initial, $"החלון זז או שינה גודל אחרי: {step}");
+                    Assert.True(Math.Abs(surfaceBottom - SurfaceBottom()) < 1, $"תחתית המשטח זזה אחרי: {step} ({surfaceBottom} → {SurfaceBottom()}, חלון {popup.ActualHeight})");
+                    Assert.True(root.ActualHeight <= popup.ActualHeight + 0.5, $"התוכן חורג מהחלון אחרי: {step}");
+                }
+
+                double SurfaceBottom() => popup.Surface.TranslatePoint(new Point(0, popup.Surface.ActualHeight), popup).Y;
+
+                Click(popup.NextDayButton); Check("יום הבא");
+                Click(popup.TodayButton); Check("חזרה להיום");
+                Click(popup.DatePickerButton); Check("פתיחת לוח השנה");
+
+                double calendarHeight = popup.DatePickerHost.ActualHeight;
+                for (int i = 0; i < 14; i++)
+                {
+                    Click(popup.HebrewDatePicker.NextMonthButton);
+                    Check($"חודש הבא {i}");
+                    Assert.Equal(calendarHeight, popup.DatePickerHost.ActualHeight, 1);
+                }
+
+                popup.HebrewDatePicker.GregorianModeRadio.IsChecked = true; Check("לועזי");
+                Assert.Equal(calendarHeight, popup.DatePickerHost.ActualHeight, 1);
+                for (int i = 0; i < 14; i++)
+                {
+                    Click(popup.HebrewDatePicker.PrevMonthButton);
+                    Check($"חודש קודם {i}");
+                    Assert.Equal(calendarHeight, popup.DatePickerHost.ActualHeight, 1);
+                }
+
+                popup.HebrewDatePicker.HebrewModeRadio.IsChecked = true; Check("עברי");
+                Click(popup.ThemeToggleButton); Check("ערכת נושא");
+                Click(popup.ThemeToggleButton);
+                Click(popup.DatePickerButton); Check("סגירת לוח השנה");
+            }
+            finally
+            {
+                popup.Close();
+            }
+        });
+    }
+
+    /// <summary>האזור השקוף שמעל המשטח לא תופס לחיצות - הן עוברות לחלון שמתחת.</summary>
+    [Fact]
+    public void ZmanimPopup_TransparentAreaAboveSurfaceIsClickThrough()
+    {
+        UiTestHost.Run(() =>
+        {
+            Rect work = SystemParameters.WorkArea;
+            var popup = new ZmanimPopup { Left = work.Left + 40, Top = work.Top, Height = work.Height, ShowActivated = false, Topmost = true };
+            try
+            {
+                popup.Show();
+                UiTestHost.DoEvents();
+
+                IntPtr handle = new System.Windows.Interop.WindowInteropHelper(popup).Handle;
+                Point surfaceCenter = popup.Surface.TranslatePoint(new Point(popup.Surface.ActualWidth / 2, popup.Surface.ActualHeight / 2), popup);
+                double surfaceTop = popup.Surface.TranslatePoint(new Point(0, 0), popup).Y;
+                Assert.True(surfaceTop > 60, "המשטח צריך להיות צמוד לתחתית ומעליו אזור שקוף");
+
+                Assert.Equal(handle, RootAt(popup.PointToScreen(surfaceCenter)));
+                Assert.NotEqual(handle, RootAt(popup.PointToScreen(new Point(popup.ActualWidth / 2, 20))));
+            }
+            finally
+            {
+                popup.Close();
+            }
+        });
+
+        static IntPtr RootAt(Point screen)
+        {
+            IntPtr hwnd = WindowFromPoint(new POINT { X = (int)screen.X, Y = (int)screen.Y });
+            return GetAncestor(hwnd, 2);
+        }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(POINT point);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    private static void Click(ButtonBase button)
+    {
+        if (button is ToggleButton toggle)
+        {
+            toggle.IsChecked = !toggle.IsChecked;
+        }
+
+        button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
     }
 
     [Theory]

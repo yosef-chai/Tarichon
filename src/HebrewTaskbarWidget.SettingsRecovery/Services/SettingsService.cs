@@ -14,11 +14,14 @@ namespace HebrewTaskbarWidget.Services
     /// </summary>
     public static class SettingsService
     {
-        private static readonly string SettingsDirectory = Path.Combine(
+        private static string SettingsDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "HebrewTaskbarWidget");
 
-        private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
+        // בבדיקות: לא משדרים לתהליכים אחרים (הוידג'ט האמיתי של המשתמש)
+        private static bool _isolated;
+
+        private static string SettingsFilePath => Path.Combine(SettingsDirectory, "settings.json");
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -114,6 +117,11 @@ namespace HebrewTaskbarWidget.Services
 
             SettingsChanged?.Invoke(null, EventArgs.Empty);
 
+            if (_isolated)
+            {
+                return;
+            }
+
             // מודיע לתהליכים אחרים (בפרט: הוידג'ט הראשי, אם השמירה בוצעה
             // מכלי הגישה העצמאי להגדרות שרץ כתהליך נפרד) שיש הגדרות חדשות
             // לטעון - כדי שהשינוי ייכנס לתוקף מיידית, בלי צורך בהפעלה מחדש.
@@ -129,6 +137,14 @@ namespace HebrewTaskbarWidget.Services
         {
             Current = Load();
             SettingsChanged?.Invoke(null, EventArgs.Empty);
+        }
+
+        /// <summary>מפנה את קובץ ההגדרות לתיקייה אחרת ומתחיל מברירות המחדל. לבדיקות בלבד.</summary>
+        internal static void IsolateForTests(string directory)
+        {
+            SettingsDirectory = directory;
+            _isolated = true;
+            Current = Load();
         }
 
         public static Models.GeoLocation BuildLocation() => new()

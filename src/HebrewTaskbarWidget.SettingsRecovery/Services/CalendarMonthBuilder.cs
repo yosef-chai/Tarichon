@@ -114,13 +114,18 @@ namespace HebrewTaskbarWidget.Services
             }
         }
 
+        /// <summary>
+        /// מספר השורות ברשת קבוע (6 - המקסימום שחודש יכול לתפוס), כדי שגובה הלוח לא ישתנה
+        /// במעבר בין חודשים או בין לוח עברי ללועזי. השורות העודפות מתמלאות בימי החודש הבא.
+        /// </summary>
+        public const int GridRows = 6;
+
         public static CalendarMonthView Build(CalendarSystem system, int year, int month)
         {
             (DateTime first, DateTime last) = GetMonthRange(system, year, month);
 
             int leading = (int)first.DayOfWeek;
-            int totalInMonth = (last - first).Days + 1;
-            int rowCount = (int)Math.Ceiling((leading + totalInMonth) / 7.0);
+            const int rowCount = GridRows;
 
             var cells = new List<CalendarDayCell>(rowCount * 7);
             DateTime gridStart = first.AddDays(-leading);

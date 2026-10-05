@@ -44,6 +44,12 @@ namespace HebrewTaskbarWidget
         /// <summary>המרווח הנראה בין תחתית הלוח לראש הוידג'ט.</summary>
         private const double GapAboveWidget = 6.0;
 
+        /// <summary>מרווח מינימלי בין ראש הלוח לראש אזור העבודה של המסך.</summary>
+        private const double TopScreenMargin = 8.0;
+
+        /// <summary>גובה מינימלי לחלון, גם במסך נמוך מאוד (הרשימה נגללת).</summary>
+        internal const double MinWindowHeight = 360.0;
+
         private static readonly CultureInfo HebrewCulture = new("he-IL");
 
         // מיקום החישוב נלקח מהגדרות המשתמש; ברירת המחדל היא ירושלים.
@@ -51,11 +57,8 @@ namespace HebrewTaskbarWidget
 
         private DateTime _selectedDate = AppTimeService.Today();
 
-        // מיקום ורוחב הוידג'ט - נשמרים כדי לחשב מחדש את המיקום בכל שינוי גובה.
         private double _widgetLeft;
-        private double _widgetTop;
         private double _widgetWidth;
-        private bool _positioned;
 
         private static readonly string[] DayOfWeekNames =
         {
@@ -104,16 +107,6 @@ namespace HebrewTaskbarWidget
                         ? new[] { myHandle, _additionalProtectedHandle }
                         : new[] { myHandle });
             };
-        }
-
-        /// <summary>
-        /// ממקמים מחדש בתוך סבב הסידור עצמו, ולא ב-SizeChanged, כדי שהגובה והמיקום
-        /// החדשים יוצגו באותו פריים ולא תהיה "קפיצה" כשתוכן הלוח משתנה.
-        /// </summary>
-        protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
-        {
-            base.OnRenderSizeChanged(sizeInfo);
-            RepositionKeepingBottomAnchored();
         }
 
         private void SettingsService_SettingsChanged(object? sender, EventArgs e)
@@ -166,20 +159,26 @@ namespace HebrewTaskbarWidget
         /// <summary>
         /// ממקמת את הלוח מעל הוידג'ט לפי היישור שבהגדרות: אוטומטי (ממורכז, או צמוד לקצה
         /// אם הוידג'ט צמוד לקצה מסך), ממורכז, צמוד לקצה הימני או צמוד לקצה השמאלי.
+        /// יש לקרוא לה לפני Show: החלון נפתח ישר במקומו ובגודלו, ולא זז אחר כך.
         /// </summary>
         public void PositionAboveWidget(double widgetLeft, double widgetTop, double widgetWidth, WidgetAttachSide? widgetEdgeSnapAlignment = null)
         {
             _widgetLeft = widgetLeft;
-            _widgetTop = widgetTop;
             _widgetWidth = widgetWidth;
             _widgetEdgeSnapAlignment = widgetEdgeSnapAlignment;
 
-            // ממתינים למידות בפועל (SizeToContent) לפני החישוב
-            UpdateLayout();
+            if (TryGetWorkAreaTop(out double workTop))
+            {
+                Height = ComputeWindowHeight(widgetTop, workTop);
+            }
 
-            _positioned = true;
-            RepositionKeepingBottomAnchored();
+            Left = ComputeLeft(Width);
+            Top = ComputePopupTop(widgetTop, Height);
         }
+
+        /// <summary>כל הגובה הפנוי מראש אזור העבודה ועד מעל הוידג'ט, כולל שולי הצל.</summary>
+        internal static double ComputeWindowHeight(double widgetTop, double workAreaTop) =>
+            Math.Max(MinWindowHeight, widgetTop - GapAboveWidget - workAreaTop - TopScreenMargin + 2 * ShadowInset);
 
         /// <summary>מיקום ה-Left של החלון לפי היישור הנוכחי, כולל קיזוז שולי הצל.</summary>
         private double ComputeLeft(double popupWidth)
@@ -214,65 +213,11 @@ namespace HebrewTaskbarWidget
         internal static double ComputePopupTop(double widgetTop, double popupHeight) =>
             widgetTop - popupHeight + ShadowInset - GapAboveWidget;
 
-        /// <summary>
-        /// ממקמת מחדש בכל שינוי גובה (שורת חג, פתיחת לוח השנה) כך שהתחתית נשארת צמודה
-        /// לוידג'ט וההתארכות היא כלפי מעלה, ולא אל מתחת לשורת המשימות.
-        /// </summary>
-        private void RepositionKeepingBottomAnchored()
-        {
-            if (!_positioned)
-            {
-                return;
-            }
-
-            double popupWidth = ActualWidth > 0 ? ActualWidth : Width;
-            double popupHeight = ActualHeight > 0 ? ActualHeight : Height;
-
-            FitZmanimListToScreen(popupHeight);
-
-            Left = ComputeLeft(popupWidth);
-            Top = ComputePopupTop(_widgetTop, popupHeight);
-        }
-
-        /// <summary>
-        /// אם הלוח גבוה מהשטח הפנוי מעל הוידג'ט (למשל כשלוח השנה פתוח במסך נמוך),
-        /// מגביל את גובה רשימת הזמנים כך שהיא נגללת במקום שהלוח ייחתך בראש המסך.
-        /// </summary>
-        private void FitZmanimListToScreen(double popupHeight)
-        {
-            if (!TryGetWorkAreaTop(out double workTop))
-            {
-                return;
-            }
-
-            const double topMargin = 8.0;
-            double available = _widgetTop - GapAboveWidget - workTop - topMargin;
-            double visibleHeight = popupHeight - 2 * ShadowInset;
-            double maxList = ComputeListMaxHeight(available, visibleHeight, ZmanimScroll.ActualHeight, ZmanimList.ActualHeight);
-
-            if (!maxList.Equals(ZmanimScroll.MaxHeight) && Math.Abs(ZmanimScroll.MaxHeight - maxList) > 0.5)
-            {
-                ZmanimScroll.MaxHeight = maxList;
-            }
-        }
-
-        /// <summary>
-        /// הגובה המקסימלי לרשימה: מה שנשאר אחרי שאר התוכן, ולא פחות מ-120 (כמה שורות).
-        /// אין הגבלה (Infinity) כשהרשימה המלאה (naturalListHeight) נכנסת כולה.
-        /// </summary>
-        internal static double ComputeListMaxHeight(double availableHeight, double visibleHeight, double currentListHeight, double naturalListHeight)
-        {
-            double otherContent = visibleHeight - currentListHeight;
-            double room = availableHeight - otherContent;
-            return room >= naturalListHeight ? double.PositiveInfinity : Math.Max(120.0, room);
-        }
-
+        /// <summary>ראש אזור העבודה של המסך שעליו הוידג'ט, ביחידות WPF של הוידג'ט.</summary>
         private bool TryGetWorkAreaTop(out double workTopDip)
         {
             workTopDip = 0;
-            IntPtr handle = _additionalProtectedHandle != IntPtr.Zero
-                ? _additionalProtectedHandle
-                : new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            IntPtr handle = _additionalProtectedHandle;
             if (handle == IntPtr.Zero)
             {
                 return false;
@@ -286,7 +231,10 @@ namespace HebrewTaskbarWidget
                 return false;
             }
 
-            workTopDip = info.rcWork.Top / VisualTreeHelper.GetDpi(this).DpiScaleY;
+            // החלון עוד לא מוצג, ולכן קנה המידה נלקח מהוידג'ט (שעל אותו מסך)
+            double scaleY = System.Windows.Interop.HwndSource.FromHwnd(handle)?.CompositionTarget?.TransformToDevice.M22
+                            ?? VisualTreeHelper.GetDpi(this).DpiScaleY;
+            workTopDip = info.rcWork.Top / scaleY;
             return true;
         }
 

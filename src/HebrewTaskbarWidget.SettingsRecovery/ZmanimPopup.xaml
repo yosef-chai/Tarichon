@@ -10,7 +10,8 @@
         ShowInTaskbar="False"
         ResizeMode="NoResize"
         Topmost="True"
-        SizeToContent="WidthAndHeight"
+        SizeToContent="Manual"
+        Width="346" Height="720"
         WindowStartupLocation="Manual"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
@@ -53,12 +54,16 @@
         </ResourceDictionary>
     </Window.Resources>
 
-    <!-- השוליים סביב המשטח שומרים מקום לצל; PositionAboveWidget מקזז אותם. -->
-    <Border Style="{StaticResource FlyoutSurfaceStyle}" Margin="12">
-        <StackPanel Width="320" Margin="0,0,0,2">
+    <!-- החלון בגודל קבוע (כל הגובה הפנוי מעל הוידג'ט) והמשטח צמוד לתחתיתו. כך שינוי תוכן
+         (יום אחר, פתיחת לוח השנה) רק מצייר מחדש, בלי להזיז או לשנות את גודל החלון - שזה מה
+         שגרם לריצוד. האזור השקוף שמעל המשטח לא תופס לחיצות (חלון שכבתי מעביר אותן הלאה).
+         השוליים סביב המשטח שומרים מקום לצל; PositionAboveWidget מקזז אותם. -->
+    <Border x:Name="Surface" Style="{StaticResource FlyoutSurfaceStyle}" Margin="12" VerticalAlignment="Bottom">
+        <!-- הרשימה היא הילד האחרון ולכן מקבלת את מה שנשאר: אם אין מספיק מקום היא נגללת. -->
+        <DockPanel Width="320" Margin="0,0,0,2" LastChildFill="True">
 
             <!-- כותרת: ניווט בין ימים. ב-RTL "יום קודם" מימין והחץ פונה ימינה. -->
-            <Grid Margin="10,12,10,8">
+            <Grid DockPanel.Dock="Top" Margin="10,12,10,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -89,7 +94,7 @@
             </Grid>
 
             <!-- שורת פעולות: חזרה להיום (ימין), ובצד השני לוח שנה, ערכת נושא והגדרות -->
-            <Grid Margin="10,0,10,8">
+            <Grid DockPanel.Dock="Top" Margin="10,0,10,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -118,27 +123,26 @@
             </Grid>
 
             <!-- לוח שנה עברי / לועזי - נפתח מכפתור לוח השנה -->
-            <Border x:Name="DatePickerHost" Style="{StaticResource InsetCardStyle}" Padding="8,10,8,8"
+            <Border x:Name="DatePickerHost" DockPanel.Dock="Top" Style="{StaticResource InsetCardStyle}" Padding="8,10,8,8"
                     Margin="12,0,12,10" Visibility="Collapsed">
                 <controls:HebrewCalendarPicker x:Name="HebrewDatePicker"
                                                DateSelected="HebrewDatePicker_DateSelected"
                                                ModeChanged="HebrewDatePicker_ModeChanged" />
             </Border>
 
-            <TextBlock Text="זמני היום" FontSize="12" FontWeight="SemiBold" Margin="16,0,16,6"
+            <TextBlock DockPanel.Dock="Top" Text="זמני היום" FontSize="12" FontWeight="SemiBold" Margin="16,0,16,6"
                        Foreground="{DynamicResource SecondaryForegroundBrush}" />
 
-            <!-- רשימת הזמנים. הגובה מוגבל בקוד לשטח הפנוי במסך, ומה שלא נכנס נגלל. -->
+            <TextBlock DockPanel.Dock="Bottom" Text="הזמנים משוערים לפי חישוב אסטרונומי, אין לסמוך על הזמנים להלכה למעשה."
+                       FontSize="10.5" TextWrapping="Wrap" TextAlignment="Center" Margin="16,10,16,10"
+                       Foreground="{DynamicResource SecondaryForegroundBrush}" />
+
             <Border Style="{StaticResource InsetCardStyle}" Padding="4" Margin="12,0">
                 <ScrollViewer x:Name="ZmanimScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <ItemsControl x:Name="ZmanimList" ItemTemplate="{StaticResource ZmanRowTemplate}"
                                   AutomationProperties.Name="זמני היום" />
                 </ScrollViewer>
             </Border>
-
-            <TextBlock Text="הזמנים משוערים לפי חישוב אסטרונומי, אין לסמוך על הזמנים להלכה למעשה."
-                       FontSize="10.5" TextWrapping="Wrap" TextAlignment="Center" Margin="16,10,16,10"
-                       Foreground="{DynamicResource SecondaryForegroundBrush}" />
-        </StackPanel>
+        </DockPanel>
     </Border>
 </Window>

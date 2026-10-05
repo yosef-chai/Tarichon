@@ -91,6 +91,25 @@ internal static class UiTestHost
         }
     }
 
+    public static IEnumerable<T> FindLogicalChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T self)
+        {
+            yield return self;
+        }
+
+        foreach (object child in LogicalTreeHelper.GetChildren(root))
+        {
+            if (child is DependencyObject element)
+            {
+                foreach (T nested in FindLogicalChildren<T>(element))
+                {
+                    yield return nested;
+                }
+            }
+        }
+    }
+
     private static Dispatcher StartDispatcherThread()
     {
         Dispatcher? dispatcher = null;

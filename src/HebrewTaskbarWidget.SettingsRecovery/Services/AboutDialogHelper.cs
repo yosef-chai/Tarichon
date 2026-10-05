@@ -17,7 +17,7 @@ namespace HebrewTaskbarWidget.Services
 
             AppMessageBoxWindow.Show(
                 $"תאריכון - וידג'ט תאריך עברי לשורת המשימות\nגרסה {version}\n" +
-                "פותח ע\"י ישראל אמיתי\n\n" +
+                "פותח ע\"י ישראל אמיתי ו-א.מ.\n\n" +
                 "מציג את התאריך העברי, היום בשבוע ופרשת השבוע, צמוד לשעון המערכת.\n\n" +
                 "נתוני פרשת השבוע: Hebcal.com (רישיון CC BY 4.0)\n" +
                 "חישוב זמנים (KosherJava): Yitzchok/Zmanim, מאת אליהו הרשפלד (רישיון LGPL 2.1)\n\n" +

@@ -166,14 +166,16 @@
         </Setter>
     </Style>
 
-    <!-- שדה טקסט: גובה קבוע (28) זהה לתפריטי הבחירה, כדי ששניהם יתיישרו באותה שורה. -->
+    <!-- שדה טקסט: גובה קבוע (30) זהה לתפריטי הבחירה, כדי ששניהם יתיישרו באותה שורה.
+         את ה-Padding מחיל ה-TextBox בעצמו בתוך PART_ContentHost - אסור להחיל אותו שוב בתבנית,
+         אחרת הוא מוכפל והטקסט מתחיל רחוק מהקצה (בשדה החיפוש - כמעט באמצע). -->
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource PrimaryForegroundBrush}" />
         <Setter Property="CaretBrush" Value="{DynamicResource PrimaryForegroundBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="Padding" Value="9,3" />
         <Setter Property="Margin" Value="0,2" />
         <Setter Property="Height" Value="30" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -181,7 +183,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
                     <Border x:Name="Bd" CornerRadius="6" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled" />
+                        <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocusWithin" Value="True">

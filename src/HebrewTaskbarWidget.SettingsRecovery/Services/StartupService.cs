@@ -10,8 +10,14 @@ namespace HebrewTaskbarWidget.Services
     /// </summary>
     public static class StartupService
     {
-        private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string DefaultRunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string ValueName = "HebrewTaskbarWidget";
+        private const string MainExecutableName = "HebrewTaskbarWidget.exe";
+
+        /// <summary>מפתח חלופי לבדיקות, כדי שלא ייגעו בהפעלה האוטומטית האמיתית של המשתמש.</summary>
+        internal static string? RunKeyPathOverride { get; set; }
+
+        private static string RunKeyPath => RunKeyPathOverride ?? DefaultRunKeyPath;
 
         /// <summary>
         /// דגל שורת-פקודה שנוסף להפעלה האוטומטית (ולה בלבד) - מאפשר לתוכנה
@@ -20,9 +26,20 @@ namespace HebrewTaskbarWidget.Services
         /// </summary>
         public const string AutoStartArgument = "--autostart";
 
-        /// <summary>נתיב קובץ ההרצה הנוכחי (exe), משמש כערך שנשמר במפתח ה-Run.</summary>
-        private static string ExecutablePath =>
-            Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+        /// <summary>
+        /// הוידג'ט הראשי - גם כשההגדרות נפתחות מכלי ההגדרות העצמאי (HebrewTaskbarWidgetSettings.exe),
+        /// שיושב באותה תיקייה. אחרת כלי ההגדרות היה רושם את עצמו להפעלה במקום הוידג'ט.
+        /// </summary>
+        internal static string ExecutablePath
+        {
+            get
+            {
+                string main = System.IO.Path.Combine(AppContext.BaseDirectory, MainExecutableName);
+                return System.IO.File.Exists(main)
+                    ? main
+                    : Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+            }
+        }
 
         public static bool IsEnabled()
         {

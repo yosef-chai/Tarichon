@@ -132,6 +132,13 @@ namespace HebrewTaskbarWidget
         /// באחת מהגדרות המרחק (או בוחר מפורשות באופציה הראשונה), הדגל מתאפס.
         /// </summary>
         private bool _freeDragPreserved;
+
+        // התאריך והשעה שהוצגו בשדות השעון הידני בטעינה - לזיהוי עריכה
+        private DateTime? _loadedManualDate;
+        private string _loadedManualTimeText = string.Empty;
+
+        // המשתמש שינה את הגדרות המיקום בחלון הזה (ולכן הן גוברות על גרירה שקרתה בינתיים)
+        private bool _positionTouched;
         private readonly List<ZmanRuleRow> _zmanRuleRows = new();
 
         /// <summary>עותק עבודה של רשימת ההתראות המתקדמות - נערך ע"י עורך ההתראה ונשמר בפועל רק בלחיצה על "שמור" הראשית של פאנל ההגדרות.</summary>
@@ -892,6 +899,9 @@ namespace HebrewTaskbarWidget
                 return;
             }
 
+            // הדיאלוג הוא חלון נפרד, ולכן השינויים בו לא מסומנים אוטומטית
+            SetUnsavedChanges(true);
+
             if (baseZmanName == Services.ZmanimCalendar.NameCandleLighting)
             {
                 _candleLightingMinutesBeforeSunset = dialog.ResultCandleLightingMinutes;
@@ -1170,9 +1180,11 @@ namespace HebrewTaskbarWidget
             GregorianSideRightRadio.IsChecked = s.GregorianClockSide == WidgetAttachSide.Right;
             GregorianSideLeftRadio.IsChecked = s.GregorianClockSide == WidgetAttachSide.Left;
             ShowGregorianSeparatorCheckBox.IsChecked = s.ShowGregorianSeparator;
+            ShowGregorianSeparatorCheckBox.IsEnabled = s.ShowGregorianClock;
 
             ShowHolidayPanelCheckBox.IsChecked = s.ShowHolidayPanel;
             HolidayPanelSidePanel.IsEnabled = s.ShowHolidayPanel;
+            ShowHolidaySeparatorCheckBox.IsEnabled = s.ShowHolidayPanel;
             HolidaySideRightRadio.IsChecked = s.HolidayPanelSide == HolidayPanelPosition.FarRight;
             HolidaySideLeftRadio.IsChecked = s.HolidayPanelSide == HolidayPanelPosition.FarLeft;
             HolidaySideBetweenRadio.IsChecked = s.HolidayPanelSide == HolidayPanelPosition.BetweenHebrewAndGregorian;
@@ -1197,6 +1209,8 @@ namespace HebrewTaskbarWidget
             DateTime manualBasis = AppTimeService.Now();
             ManualDatePicker.SelectedDate = manualBasis.Date;
             ManualTimeTextBox.Text = manualBasis.ToString("HH:mm", CultureInfo.InvariantCulture);
+            _loadedManualDate = manualBasis.Date;
+            _loadedManualTimeText = ManualTimeTextBox.Text;
             TimeFormat24Radio.IsChecked = !s.Use12HourFormat;
             TimeFormat12Radio.IsChecked = s.Use12HourFormat;
             ShowSecondsCheckBox.IsChecked = s.ShowSecondsInTime;
@@ -1451,6 +1465,7 @@ namespace HebrewTaskbarWidget
 
             (_workingOverlayOrder[index - 1], _workingOverlayOrder[index]) = (_workingOverlayOrder[index], _workingOverlayOrder[index - 1]);
             RefreshOverlayOrderPanel();
+            SetUnsavedChanges(true);
         }
 
         private void OverlayOrderDownButton_Click(object sender, RoutedEventArgs e)
@@ -1462,6 +1477,7 @@ namespace HebrewTaskbarWidget
 
             (_workingOverlayOrder[index + 1], _workingOverlayOrder[index]) = (_workingOverlayOrder[index], _workingOverlayOrder[index + 1]);
             RefreshOverlayOrderPanel();
+            SetUnsavedChanges(true);
         }
 
         /// <summary>מזהי הצלילים הקבועים, לפי אותו סדר כמו הפריטים ב-XAML של NotificationFixedSoundComboBox ("צליל 1".."צליל 5").</summary>
@@ -1482,7 +1498,7 @@ namespace HebrewTaskbarWidget
             {
                 UseCustomStyle = useCustomCheckBox.IsChecked == true,
                 FontFamilyName = string.IsNullOrWhiteSpace(fontFamilyTextBox.Text) ? "Segoe UI" : fontFamilyTextBox.Text.Trim(),
-                FontSize = ParseDoubleOrDefault(fontSizeTextBox.Text, 26.0),
+                FontSize = ParseClamped(fontSizeTextBox.Text, 26.0, MinFontSize, MaxFontSize),
                 ColorHex = colorPicker.SelectedColorHex,
             };
         }
@@ -1495,6 +1511,7 @@ namespace HebrewTaskbarWidget
             }
 
             CustomEdgeOffsetPanel.Visibility = PositionCustomEdgeRadio.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            _positionTouched = true;
 
             // ברגע שהמשתמש בוחר במפורש את האופציה הראשונה (צמוד לחץ), המיקום
             // החופשי הקודם (אם היה) יוחלף במצב הזה בעת השמירה - ההודעה כבר
@@ -1516,6 +1533,7 @@ namespace HebrewTaskbarWidget
             }
 
             _freeDragPreserved = false;
+            _positionTouched = true;
         }
 
         private void CustomOffsetPixelsTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -1586,6 +1604,7 @@ namespace HebrewTaskbarWidget
 
                 if (matchedCityName is not null)
                 {
+                    SetUnsavedChanges(true);
                     AppMessageBoxWindow.Show(
                         $"המיקום זוהה בהצלחה - נבחרה העיר הקרובה ביותר: {matchedCityName}.",
                         "שירותי מיקום",
@@ -1823,9 +1842,12 @@ namespace HebrewTaskbarWidget
 
             UpdateProgressText.Text = "ההורדה הושלמה - התוכנה תיסגר ותתעדכן כעת...";
 
-            // שומרים את ההגדרות הנוכחיות (כולל שינויים לא-שמורים בחלון הזה,
-            // כמו הפעלה/כיבוי של בדיקת עדכונים) לפני היציאה, ורק אז מפעילים
-            // את תהליך ההחלה (שיוצא מהתוכנה לגמרי ומריץ אותה מחדש בסיום).
+            // שומרים שינויים שלא נשמרו לפני היציאה: ההחלה יוצאת מהתהליך מיד, בלי OnClosing
+            if (_hasUnsavedChanges)
+            {
+                SaveSettings(closeAfter: false);
+            }
+
             await Task.Delay(800);
             UpdateService.ApplyUpdateAndRestart(downloadedPath);
         }
@@ -2093,6 +2115,7 @@ namespace HebrewTaskbarWidget
             {
                 NotificationCustomSoundPathTextBox.Text = path;
                 NotificationSoundSourceComboBox.SelectedIndex = 2;
+                SetUnsavedChanges(true);
             }
         }
 
@@ -2190,6 +2213,7 @@ namespace HebrewTaskbarWidget
 
             rule.Enabled = !rule.Enabled;
             RefreshAdvancedRulesList();
+            SetUnsavedChanges(true);
         }
 
         private void AdvancedRuleEditButton_Click(object sender, RoutedEventArgs e)
@@ -2222,6 +2246,7 @@ namespace HebrewTaskbarWidget
             }
 
             RefreshAdvancedRulesList();
+            SetUnsavedChanges(true);
         }
 
         private void AddAdvancedNotificationButton_Click(object sender, RoutedEventArgs e)
@@ -2432,6 +2457,7 @@ namespace HebrewTaskbarWidget
             AdvancedRuleEditorBorder.Visibility = Visibility.Collapsed;
             _editingAdvancedRuleId = null;
             RefreshAdvancedRulesList();
+            SetUnsavedChanges(true);
         }
 
         /// <summary>
@@ -2570,10 +2596,21 @@ namespace HebrewTaskbarWidget
             OverlayCustomPositionExplanationText.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private static double ParseDoubleOrDefault(string text, double fallback)
+        /// <summary>מקבל גם פסיק עשרוני ("40,71"); ערך לא תקין או NaN/אינסוף מחזיר את ברירת המחדל.</summary>
+        internal static double ParseDoubleOrDefault(string text, double fallback)
         {
-            return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) ? value : fallback;
+            string normalized = (text ?? string.Empty).Trim().Replace(',', '.');
+            return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) && double.IsFinite(value)
+                ? value
+                : fallback;
         }
+
+        /// <summary>כמו ParseDoubleOrDefault, ומגביל לטווח. גודל גופן 0 למשל מפיל את הוידג'ט כשההגדרה מוחלת.</summary>
+        internal static double ParseClamped(string text, double fallback, double min, double max) =>
+            Math.Clamp(ParseDoubleOrDefault(text, fallback), min, max);
+
+        private const double MinFontSize = 6;
+        private const double MaxFontSize = 200;
 
         /// <summary>בוחר את פריט תיבת הבחירה שה-Tag שלו (מחרוזת) תואם - אם אין התאמה, נופל לאינדקס ברירת המחדל שסופק.</summary>
         private static void SelectComboItemByTag(ComboBox combo, string? tag, int fallbackIndex)
@@ -2663,12 +2700,32 @@ namespace HebrewTaskbarWidget
             // האופציה השנייה מסומנת: אם המיקום החופשי הקודם (שנקבע ע"י גרירה)
             // עדיין "משומר" (המשתמש לא נגע בהגדרות המרחק המותאם אישית מאז
             // הטעינה) - משמרים אותו כפי שהוא. אחרת, זה מרחק מותאם אישית רגיל.
-            if (_freeDragPreserved && _working.PositionMode == WidgetPositionMode.FreeDrag && _working.FreeDragLeft.HasValue && _working.FreeDragTop.HasValue)
+            if (_freeDragPreserved && HasCurrentFreeDragPosition())
             {
                 return WidgetPositionMode.FreeDrag;
             }
 
             return WidgetPositionMode.CustomEdgeOffset;
+        }
+
+        /// <summary>
+        /// מצב המיקום לשמירה. אם הוידג'ט נגרר בזמן שהחלון פתוח והמיקום לא נערך כאן,
+        /// הגרירה נשמרת - אחרת השמירה הייתה מחזירה אותו למקום הישן.
+        /// </summary>
+        private WidgetPositionMode ResolvePositionModeForSave()
+        {
+            if (!_positionTouched && HasCurrentFreeDragPosition())
+            {
+                return WidgetPositionMode.FreeDrag;
+            }
+
+            return ResolvePositionMode();
+        }
+
+        private static bool HasCurrentFreeDragPosition()
+        {
+            AppSettings current = SettingsService.Current;
+            return current.PositionMode == WidgetPositionMode.FreeDrag && current.FreeDragLeft.HasValue && current.FreeDragTop.HasValue;
         }
 
         private void SaveButton_Click(object sender, RoutedEventArgs e) => SaveSettings(closeAfter: true);
@@ -2678,9 +2735,21 @@ namespace HebrewTaskbarWidget
 
         private void SaveSettings(bool closeAfter)
         {
-            DateTime manualDate = ManualDatePicker.SelectedDate?.Date ?? DateTime.Today;
-            TimeSpan manualTime = TimeSpan.TryParse(ManualTimeTextBox.Text, CultureInfo.InvariantCulture, out TimeSpan parsedTime) ? parsedTime : DateTime.Now.TimeOfDay;
-            DateTime manualDateTimeBase = manualDate + manualTime;
+            AppSettings current = SettingsService.Current;
+
+            // השעון הידני מעוגן מחדש רק אם השדות נערכו או שהמצב הופעל עכשיו. אחרת כל שמירה
+            // הייתה מחזירה אותו לשעה שהוצגה בפתיחת החלון.
+            bool manualFieldsEdited = ManualDatePicker.SelectedDate?.Date != _loadedManualDate || ManualTimeTextBox.Text != _loadedManualTimeText;
+            bool manualTurnedOn = UseManualDateTimeCheckBox.IsChecked == true && !current.UseManualDateTime;
+            long manualBaseTicks = current.ManualDateTimeBaseTicks;
+            long manualSetAtUtcTicks = current.ManualDateTimeSetAtUtcTicks;
+            if (manualFieldsEdited || manualTurnedOn)
+            {
+                DateTime manualDate = ManualDatePicker.SelectedDate?.Date ?? DateTime.Today;
+                TimeSpan manualTime = TimeSpan.TryParse(ManualTimeTextBox.Text, CultureInfo.InvariantCulture, out TimeSpan parsedTime) ? parsedTime : DateTime.Now.TimeOfDay;
+                manualBaseTicks = (manualDate + manualTime).Ticks;
+                manualSetAtUtcTicks = DateTime.UtcNow.Ticks;
+            }
 
             // "הכל מסומן" נשמר כ-null (במקום רשימה מפורשת של כל השמות) - כדי
             // שזמנים חדשים שיתווספו בעתיד יוצגו אוטומטית, גם בלי לעדכן הגדרות ישנות.
@@ -2688,7 +2757,22 @@ namespace HebrewTaskbarWidget
                 .Where(kvp => kvp.Value.IsChecked == true)
                 .Select(kvp => kvp.Key)
                 .ToList();
-            List<string>? visibleZmanNames = checkedZmanNames.Count == _zmanVisibilityCheckBoxes.Count ? null : checkedZmanNames;
+            List<string>? visibleZmanNames = _zmanVisibilityCheckBoxes.Count == 0
+                ? current.VisibleZmanNames // הרשימה לא נבנתה (שגיאת חישוב) - לא מוחקים
+                : checkedZmanNames.Count == _zmanVisibilityCheckBoxes.Count ? null : checkedZmanNames;
+
+            // כללי התראה לזמנים שמוסתרים כרגע (ולכן אין להם שורה בעמוד) נשמרים כמו שהם
+            var rowZmanNames = new HashSet<string>(_zmanRuleRows.Select(row => row.ZmanName));
+            List<ZmanNotificationRule> hiddenZmanRules = current.ZmanNotificationRules
+                .Where(rule => !rowZmanNames.Contains(rule.ZmanName))
+                .ToList();
+
+            int locationIndex = LocationPresetComboBox.SelectedIndex;
+            string locationName = locationIndex >= 0 && locationIndex < LocationPresets.Length
+                ? LocationPresets[locationIndex].Name
+                : !string.IsNullOrWhiteSpace(_working.LocationName) && !LocationPresets.Any(p => p.Name == _working.LocationName)
+                    ? _working.LocationName // שם מותאם אישית קיים נשמר
+                    : "מיקום מותאם אישית";
 
             var s = new AppSettings
             {
@@ -2698,13 +2782,13 @@ namespace HebrewTaskbarWidget
 
                 // --- הוידג'ט: מיקום ---
                 ShowWidget = ShowWidgetCheckBox.IsChecked == true,
-                PositionMode = ResolvePositionMode(),
+                PositionMode = ResolvePositionModeForSave(),
                 CustomOffsetSide = CustomOffsetSideComboBox.SelectedIndex == 1 ? WidgetAttachSide.Left : WidgetAttachSide.Right,
                 CustomOffsetPixels = ParseDoubleOrDefault(CustomOffsetPixelsTextBox.Text, 250.0),
                 LockWidgetPosition = LockWidgetPositionCheckBox.IsChecked == true,
                 LockOverlayPosition = LockOverlayPositionCheckBox.IsChecked == true,
-                FreeDragLeft = _working.FreeDragLeft,
-                FreeDragTop = _working.FreeDragTop,
+                FreeDragLeft = SettingsService.Current.FreeDragLeft,
+                FreeDragTop = SettingsService.Current.FreeDragTop,
 
                 // --- הוידג'ט: שורות (אין יותר UI לעריכה - ראו AppSettings.ShowTopLine
                 //     להסבר; שומרים את הערך הקיים כפי שהוא) ---
@@ -2715,7 +2799,7 @@ namespace HebrewTaskbarWidget
                 // --- הוידג'ט: גופן וצבע ---
                 UseCustomFont = UseCustomFontCheckBox.IsChecked == true,
                 FontFamilyName = string.IsNullOrWhiteSpace(FontFamilyTextBox.Text) ? "Segoe UI" : FontFamilyTextBox.Text.Trim(),
-                FontSize = ParseDoubleOrDefault(FontSizeTextBox.Text, 12.0),
+                FontSize = ParseClamped(FontSizeTextBox.Text, 12.0, MinFontSize, MaxFontSize),
                 UseCustomTextColor = UseCustomColorCheckBox.IsChecked == true,
                 CustomTextColorHex = TextColorPicker.SelectedColorHex,
 
@@ -2745,15 +2829,14 @@ namespace HebrewTaskbarWidget
                 // --- הוידג'ט: קו מתאר ---
                 UseWidgetBorder = UseWidgetBorderCheckBox.IsChecked == true,
                 WidgetBorderColorHex = WidgetBorderColorPicker.SelectedColorHex,
-                WidgetBorderThickness = ParseDoubleOrDefault(WidgetBorderThicknessTextBox.Text, 1.0),
+                WidgetBorderThickness = ParseClamped(WidgetBorderThicknessTextBox.Text, 1.0, 0, 20),
 
                 // --- מיקום וזמנים ---
-                LocationName = LocationPresetComboBox.SelectedIndex >= 0 && LocationPresetComboBox.SelectedIndex < LocationPresets.Length
-                    ? LocationPresets[LocationPresetComboBox.SelectedIndex].Name
-                    : "מיקום מותאם אישית",
-                Latitude = ParseDoubleOrDefault(LatitudeTextBox.Text, 31.7683),
-                Longitude = ParseDoubleOrDefault(LongitudeTextBox.Text, 35.2137),
-                ElevationMeters = ParseDoubleOrDefault(ElevationTextBox.Text, 0),
+                LocationName = locationName,
+                // ערך לא תקין משאיר את הערך הקודם (ולא מחליף בשקט בירושלים)
+                Latitude = ParseClamped(LatitudeTextBox.Text, _working.Latitude, -90, 90),
+                Longitude = ParseClamped(LongitudeTextBox.Text, _working.Longitude, -180, 180),
+                ElevationMeters = ParseClamped(ElevationTextBox.Text, _working.ElevationMeters, -500, 9000),
                 TimeZoneId = string.IsNullOrWhiteSpace(TimeZoneTextBox.Text) ? "Israel Standard Time" : TimeZoneTextBox.Text.Trim(),
                 HebrewDayChangeMode = HebrewDayChangeTzeitRadio.IsChecked == true
                     ? HebrewDayChangeMode.AtTzeitHakochavim
@@ -2780,8 +2863,8 @@ namespace HebrewTaskbarWidget
 
                 // --- תאריך ושעה ---
                 UseManualDateTime = UseManualDateTimeCheckBox.IsChecked == true,
-                ManualDateTimeBaseTicks = manualDateTimeBase.Ticks,
-                ManualDateTimeSetAtUtcTicks = DateTime.UtcNow.Ticks,
+                ManualDateTimeBaseTicks = manualBaseTicks,
+                ManualDateTimeSetAtUtcTicks = manualSetAtUtcTicks,
                 Use12HourFormat = TimeFormat12Radio.IsChecked == true,
                 ShowSecondsInTime = ShowSecondsCheckBox.IsChecked == true,
 
@@ -2812,10 +2895,11 @@ namespace HebrewTaskbarWidget
                         SoundOverrideFixedName = fixedName,
                         SoundOverrideUseVoice = useVoice,
                     };
-                }).ToList(),
+                }).Concat(hiddenZmanRules).ToList(),
                 AdvancedNotificationRules = _workingAdvancedRules.Select(CloneAdvancedRule).ToList(),
-                ZmanimPopupDarkMode = _working.ZmanimPopupDarkMode,
-                ZmanimPopupCalendarGregorian = _working.ZmanimPopupCalendarGregorian,
+                // משתנים מחוץ לחלון הזה (כפתורים בלוח הזמנים), ולכן נלקחים מהערך העדכני
+                ZmanimPopupDarkMode = SettingsService.Current.ZmanimPopupDarkMode,
+                ZmanimPopupCalendarGregorian = SettingsService.Current.ZmanimPopupCalendarGregorian,
 
                 // --- שולחן עבודה ---
                 OverlayEnabled = OverlayEnabledCheckBox.IsChecked == true,
@@ -2828,7 +2912,7 @@ namespace HebrewTaskbarWidget
                 OverlayCustomX = ParseDoubleOrDefault(OverlayCustomXTextBox.Text, 100),
                 OverlayCustomY = ParseDoubleOrDefault(OverlayCustomYTextBox.Text, 100),
                 OverlayFontFamilyName = string.IsNullOrWhiteSpace(OverlayFontFamilyTextBox.Text) ? "Segoe UI" : OverlayFontFamilyTextBox.Text.Trim(),
-                OverlayFontSize = ParseDoubleOrDefault(OverlayFontSizeTextBox.Text, 26.0),
+                OverlayFontSize = ParseClamped(OverlayFontSizeTextBox.Text, 26.0, MinFontSize, MaxFontSize),
                 OverlayTextColorHex = OverlayColorPicker.SelectedColorHex,
                 OverlayAlwaysOnTop = OverlayAlwaysOnTopCheckBox.IsChecked == true,
 
@@ -2852,8 +2936,26 @@ namespace HebrewTaskbarWidget
             }
             _reduceGapRestartPendingOnSave = false;
 
+            // נתונים פנימיים שאין להם פקד. נקראים אחרי ההפעלה מחדש של Explorer, שמעדכנת את זמן ההפעלה.
+            s.LastUpdateCheckUtc = SettingsService.Current.LastUpdateCheckUtc;
+            s.LastKnownExplorerStartTimeUtc = SettingsService.Current.LastKnownExplorerStartTimeUtc;
+            s.AutoRestartExplorerOnLaunch = SettingsService.Current.AutoRestartExplorerOnLaunch;
+
+            // הסתרת השעון מוחלת מיד בלחיצה; כאן מוודאים שהמצב בפועל תואם למה שנשמר
+            // (למשל אחרי שחזור ברירות מחדל, שבו הטעינה לא מפעילה את המתג)
+            bool clockHiddenChanged = s.HideWindowsClock != SettingsService.Current.HideWindowsClock;
+
             SettingsService.Save(s);
-            StartupService.SetEnabled(s.StartWithWindows);
+            if (clockHiddenChanged)
+            {
+                WindowsClockVisibilityService.SetPolicyValue(s.HideWindowsClock);
+                WindowsClockVisibilityService.ApplyLiveVisibility(s.HideWindowsClock);
+            }
+
+            if (s.StartWithWindows != StartupService.IsEnabled())
+            {
+                StartupService.SetEnabled(s.StartWithWindows);
+            }
             SetUnsavedChanges(false);
 
             if (closeAfter)
@@ -2865,6 +2967,18 @@ namespace HebrewTaskbarWidget
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+        /// <summary>ממלא את כל הפקדים בברירות המחדל (עדיין בלי לשמור).</summary>
+        internal void ResetControlsToDefaults()
+        {
+            _working = new AppSettings();
+            LoadFromSettings(_working);
+            _positionTouched = true;
+
+            // בטעינה רגילה המצב נקרא מה-Registry; בשחזור - ברירת המחדל
+            StartWithWindowsCheckBox.IsChecked = _working.StartWithWindows;
+            SetUnsavedChanges(true);
         }
 
         private void RestoreDefaultsButton_Click(object sender, RoutedEventArgs e)
@@ -2888,9 +3002,7 @@ namespace HebrewTaskbarWidget
             // בדיוק כמו בביטול ידני של "הסתר" (ראו HideWindowsClockCheckBox_CheckedChanged).
             bool wasReducingGap = SettingsService.Current.HideWindowsClockReduceGap;
 
-            _working = new AppSettings();
-            LoadFromSettings(_working);
-            SetUnsavedChanges(true);
+            ResetControlsToDefaults();
 
             if (wasReducingGap)
             {

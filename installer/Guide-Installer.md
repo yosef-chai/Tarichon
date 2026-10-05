@@ -130,7 +130,7 @@ dotnet publish HebrewTaskbarWidget.SettingsRecovery.csproj -c Release -r win-x64
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Tarichon-Setup.iss
 ```
 
-קובץ ה-Setup הסופי ייווצר בתוך `Output\Tarichon-Setup-0.9.1.exe`
+קובץ ה-Setup הסופי ייווצר בתוך `Output\Tarichon-Setup-0.9.2.exe`
 (המספר יתעדכן אוטומטית לפי `MyAppVersion` בראש הסקריפט).
 
 ---

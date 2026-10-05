@@ -199,7 +199,8 @@ public class CalendarMonthBuilderTests
 
     private static void AssertGridIsConsistent(CalendarMonthView view)
     {
-        Assert.InRange(view.RowCount, 4, 6);
+        // גובה קבוע: תמיד 6 שורות, בכל חודש ובשני הלוחות
+        Assert.Equal(CalendarMonthBuilder.GridRows, view.RowCount);
         Assert.Equal(view.RowCount * 7, view.Cells.Count);
 
         for (int i = 0; i < view.Cells.Count; i++)
@@ -215,11 +216,13 @@ public class CalendarMonthBuilderTests
             }
         }
 
-        // הימים מחוץ לחודש רק בתחילת הרשת ובסופה, לא באמצע
+        // הימים מחוץ לחודש רק בתחילת הרשת ובסופה, לא באמצע; החודש מתחיל בשורה הראשונה
         List<bool> flags = view.Cells.Select(c => c.IsInDisplayedMonth).ToList();
         int firstIn = flags.IndexOf(true);
         int lastIn = flags.LastIndexOf(true);
-        Assert.True(firstIn < 7 && lastIn >= flags.Count - 7);
+        Assert.True(firstIn < 7);
         Assert.All(flags.Skip(firstIn).Take(lastIn - firstIn + 1), Assert.True);
+        (DateTime first, DateTime last) = CalendarMonthBuilder.GetMonthRange(view.System, view.Year, view.Month);
+        Assert.Equal((last - first).Days + 1, lastIn - firstIn + 1);
     }
 }

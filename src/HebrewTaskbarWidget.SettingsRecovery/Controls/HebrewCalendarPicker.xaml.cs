@@ -14,6 +14,9 @@ namespace HebrewTaskbarWidget.Controls
     /// </summary>
     public partial class HebrewCalendarPicker : UserControl
     {
+        /// <summary>גובה תא (42) ועוד השוליים שלו - ראו DayCellButtonStyle.</summary>
+        internal const double DayRowHeight = 44;
+
         private int _displayedYear;
         private int _displayedMonth;
         private bool _suppressModeEvent;
@@ -113,11 +116,12 @@ namespace HebrewTaskbarWidget.Controls
             PrevMonthButton.IsEnabled = CalendarMonthBuilder.Step(Mode, _displayedYear, _displayedMonth, -1) != (_displayedYear, _displayedMonth);
             NextMonthButton.IsEnabled = CalendarMonthBuilder.Step(Mode, _displayedYear, _displayedMonth, 1) != (_displayedYear, _displayedMonth);
 
+            // שורות בגובה קבוע (גם אם שורה ריקה בקצה הטווח הנתמך), כדי שגובה הלוח לא ישתנה
             DaysGrid.Children.Clear();
             DaysGrid.RowDefinitions.Clear();
             for (int r = 0; r < view.RowCount; r++)
             {
-                DaysGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                DaysGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(DayRowHeight) });
             }
 
             DateTime today = AppTimeService.Today();

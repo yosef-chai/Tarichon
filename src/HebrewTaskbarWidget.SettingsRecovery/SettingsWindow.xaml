@@ -522,7 +522,8 @@
                                 </controls:SettingsCard>
 
                                 <TextBlock Style="{StaticResource GroupHeader}" Text="אופן ההתראה" />
-                                <controls:SettingsCard Glyph="&#xE8BD;" Header="הודעה צפה" Description="חלונית קטנה שמופיעה על המסך">
+                                <controls:SettingsCard Glyph="&#xE8BD;" Header="הודעה צפה" Description="חלונית קטנה שמופיעה על המסך"
+                                                       Keywords="נודניק משך תצוגה מיקום רקע פינה">
                                     <CheckBox x:Name="NotificationShowPopupCheckBox" Style="{StaticResource ToggleSwitchStyle}" Checked="NotificationShowPopupCheckBox_CheckedChanged" Unchecked="NotificationShowPopupCheckBox_CheckedChanged" />
                                 </controls:SettingsCard>
 
@@ -936,7 +937,7 @@
                                     <Image Source="Assets/app.ico" Width="56" Height="56" VerticalAlignment="Top" />
                                     <StackPanel Margin="18,0,0,0" MaxWidth="560">
                                         <TextBlock x:Name="AboutVersionText" FontSize="16" FontWeight="SemiBold" />
-                                        <TextBlock Text="פותח ע&quot;י ישראל אמיתי" Margin="0,2,0,0" Foreground="{DynamicResource SecondaryForegroundBrush}" />
+                                        <TextBlock Text="פותח ע&quot;י ישראל אמיתי ו-א.מ." Margin="0,2,0,0" Foreground="{DynamicResource SecondaryForegroundBrush}" />
                                         <TextBlock Text="וידג'ט תאריך עברי לשורת המשימות: התאריך העברי, היום בשבוע ופרשת השבוע ליד שעון המערכת, חגים ומועדים, וזמני היום ההלכתיים."
                                                    Margin="0,10,0,0" TextWrapping="Wrap" />
                                         <TextBlock Margin="0,12,0,0">

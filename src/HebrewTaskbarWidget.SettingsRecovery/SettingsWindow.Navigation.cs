@@ -40,6 +40,18 @@ namespace HebrewTaskbarWidget
             AddHandler(Selector.SelectionChangedEvent, new SelectionChangedEventHandler((s, e) => OnAnyControlChanged(s, e)));
             AddHandler(RangeBase.ValueChangedEvent, new RoutedPropertyChangedEventHandler<double>((s, e) => OnAnyControlChanged(s, e)));
 
+            // בחירת צבע בדוגמית או בלוח הצבעים לא עוברת דרך אירועי הפקדים שלמעלה
+            foreach (ColorPickerControl picker in LogicalDescendants(this).OfType<ColorPickerControl>())
+            {
+                picker.ColorChanged += (_, _) =>
+                {
+                    if (!_isLoading && IsLoaded)
+                    {
+                        SetUnsavedChanges(true);
+                    }
+                };
+            }
+
             PreviewKeyDown += SettingsWindow_PreviewKeyDown;
 
             // פקדים מסוימים (למשל בורר התאריך) מעדכנים את עצמם אחרי הטעינה - מתחילים נקי רק כשהחלון רגוע.
@@ -105,6 +117,19 @@ namespace HebrewTaskbarWidget
             base.OnClosing(e);
         }
 
+        protected override void OnClosed(EventArgs e)
+        {
+            // המתג "הסתרת השעון" פועל מיד; סגירה בלי שמירה מחזירה את השעון למצב השמור
+            bool saved = SettingsService.Current.HideWindowsClock;
+            if ((HideWindowsClockCheckBox.IsChecked == true) != saved)
+            {
+                WindowsClockVisibilityService.SetPolicyValue(saved);
+                WindowsClockVisibilityService.ApplyLiveVisibility(saved);
+            }
+
+            base.OnClosed(e);
+        }
+
         private void SettingsWindow_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (Keyboard.Modifiers != ModifierKeys.Control)
@@ -156,6 +181,23 @@ namespace HebrewTaskbarWidget
             }
         }
 
+        /// <summary>
+        /// כרטיס שמוסתר כרגע (למשל "מימונה" כשהמנהג אשכנז) לא מוצג בתוצאות -
+        /// אחרת החיפוש היה פותח עמוד בלי שום דבר מודגש.
+        /// </summary>
+        private static bool IsShownOnItsPage(FrameworkElement target)
+        {
+            for (DependencyObject? current = target; current is not null and not TabItem; current = LogicalTreeHelper.GetParent(current))
+            {
+                if (current is UIElement { Visibility: Visibility.Collapsed })
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static IEnumerable<FrameworkElement> LogicalDescendants(DependencyObject root)
         {
             foreach (object child in LogicalTreeHelper.GetChildren(root))
@@ -203,6 +245,7 @@ namespace HebrewTaskbarWidget
             // התאמה בכותרת קודמת להתאמה בתיאור או במילות המפתח.
             IEnumerable<SearchEntry> matches = _searchIndex
                 .Where(entry => words.All(entry.SearchText.Contains))
+                .Where(entry => entry.Target is null || IsShownOnItsPage(entry.Target))
                 .OrderByDescending(entry => words.All(Normalize(entry.Title).Contains))
                 .Take(10);
 

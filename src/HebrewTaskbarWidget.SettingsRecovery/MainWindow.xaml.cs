@@ -1404,8 +1404,9 @@ namespace HebrewTaskbarWidget
             _zmanimPopup = new ZmanimPopup(widgetHandle);
             _zmanimPopup.Closed += (_, _) => _zmanimPopup = null;
 
-            _zmanimPopup.Show();
+            // ממקמים לפני ההצגה, כדי שהחלון לא יופיע לרגע במקום אחר ואז יקפוץ
             _zmanimPopup.PositionAboveWidget(Left, Top, ActualWidth, _cachedEdgeSnapAlignment);
+            _zmanimPopup.Show();
         }
 
         private void AboutMenuItem_Click(object sender, RoutedEventArgs e)

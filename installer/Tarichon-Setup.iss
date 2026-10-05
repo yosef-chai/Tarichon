@@ -20,7 +20,7 @@
 #define MyAppName "תאריכון"
 #define MyAppNameEn "Tarichon"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.9.1"
+  #define MyAppVersion "0.9.2"
 #endif
 #define MyAppPublisher "ישראל אמיתי ו-א.מ."
 #define MyAppURL "https://github.com/Ani-yakhol/Tarichon"
